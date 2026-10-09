@@ -1,0 +1,8 @@
+# Local simulator checkout; synchronized separately as its own repository.
+/lvgl-simulator/
+
+# Downloaded/build-time tooling. Cloud setup recreates these.
+/tools/
+
+# Operating-system metadata.
+.DS_Store

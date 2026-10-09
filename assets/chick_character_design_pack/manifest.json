@@ -1,0 +1,19 @@
+{
+  "target_display": {
+    "physical_size_inches": 2.06,
+    "resolution": [
+      410,
+      502
+    ],
+    "panel": "AMOLED"
+  },
+  "source_format": "PNG RGBA with transparent background",
+  "sprite_sizes": [
+    256,
+    192,
+    128,
+    64
+  ],
+  "recommended_default_sprite": 256,
+  "lvgl_note": "Use PNG in the SDL simulator when a PNG decoder and filesystem are enabled; convert final embedded assets to an LVGL C array or binary color format after LVGL version and storage strategy are fixed."
+}
