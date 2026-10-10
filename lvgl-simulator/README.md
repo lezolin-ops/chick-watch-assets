@@ -8,8 +8,8 @@ This project is pre-configured for VSCode and should work work on Windows, Linux
 
 - 模拟器画布：410 × 502，与微雪 2.06 英寸 AMOLED 的目标分辨率一致。
 - 宠物素材：`src/pet_chick_192.c`，由角色设定包的透明主立绘导出；走路、饥饿与睡觉贴图均位于 `assets/runtime/chick/`。
-- 宠物入口：`src/pet.c`；包含待机、四帧走路、开心弹跳、饥饿、睡觉，以及呼吸、心跳和眨眼微动画。
-- 演示会每 5 秒自动轮换：待机 → 走路 → 饥饿 → 睡觉；点击小鸡会触发开心弹跳。
+- 宠物入口：`src/pet.c`；包含待机、四帧走路、开心弹跳、饥饿、睡觉；待机保留脚底锚定的轻呼吸，加入独立眼皮眨眼，取消整身压缩式假眨眼和大幅心跳缩放。
+- 默认保持待机，脚底固定并带接地阴影。点击小鸡不透明部分触发约 0.5 秒、18 像素的轻跳，结束后恢复待机；动作中重复点击不会叠加。走路、饥饿和睡眠仍可通过 pet_set_state 切换。
 - 运行贴图转换工具：`tools/prepare_chick_sprite.py`、`tools/prepare_walk_sprites.py`、`tools/prepare_state_sprites.py` 和 `tools/generate_lvgl_argb8888.py`。
 
 ## Get started
@@ -195,3 +195,24 @@ int main(void) {
     /* ... rest of your application ...*/
 }
 ```
+
+### 待机眨眼
+
+待机每 2.8–5.2 秒眨眼一次（闭合 65ms、停留 55ms、睁开 85ms）。眼皮通过 LVGL 绘制，仅覆盖正面贴图的眼睛区域，不更换或缩放整张角色图。点击进入轻跳时立即睁眼并暂停眨眼，落地后重新计时；走路、饥饿、睡眠不显示此眼皮。删除宠物时清理眼皮动画与计时器。
+
+可选回归检查（使用可控时钟与真实 LVGL 渲染，无需 X server）：
+
+```sh
+cmake --build build --target blink_test
+./bin/blink_test
+```
+
+演示见仓库 `docs/acceptance/blink/blink.gif`。演示为真实 LVGL 帧缓冲，按 33ms 步进；首次眨眼在录制中提前至 1.8 秒，之后使用正常随机间隔，3.3 秒触发轻跳。
+
+### 待机轻拍翅膀
+
+待机每 6.5–11 秒轻拍两下翅膀，每次抬起 180ms、落下 230ms，两次之间停 90ms。左侧最多转动 18°，右侧 16.2°；只转动翅膀，脚底与身体布局保持原位。眨眼可以同时发生。点击身体或旋转后的翅膀仍触发原有轻跳；切换状态立即收回并隐藏独立翅膀，回到待机后重新计时。
+
+使用现有 BGRA 角色的运行时部件拆分与 LVGL 旋转，不修改原始 PNG；身体与翅膀缓冲新增约 157KiB 静态 RAM，真机内存和帧率仍需验证。回归检查补充两次拍动、全部阶段被轻跳打断、旋转翅膀点击、其他状态隐藏及删除清理。
+
+演示：`docs/acceptance/wings/wings.gif`，来自真实 LVGL 帧缓冲；首次拍翅提前到 1.5 秒，首次眨眼在 1.8 秒，3.3 秒触发轻跳，之后使用正常间隔。

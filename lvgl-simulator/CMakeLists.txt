@@ -197,3 +197,12 @@ else()
     message(STATUS "AddressSanitizer disabled")
 endif()
 endif()
+
+# Optional deterministic regression check; no desktop/X server required.
+add_executable(blink_test EXCLUDE_FROM_ALL tests/blink_test.c)
+target_compile_definitions(blink_test PRIVATE LV_CONF_INCLUDE_SIMPLE)
+target_compile_options(blink_test PRIVATE $<$<NOT:$<C_COMPILER_ID:MSVC>>:-UNDEBUG>)
+target_link_libraries(blink_test PRIVATE lvgl lvgl::thorvg ${SDL2_LIBRARIES})
+if(NOT MSVC)
+    target_link_libraries(blink_test PRIVATE m pthread)
+endif()
