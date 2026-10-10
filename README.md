@@ -1,0 +1,1 @@
+# chick-watch-assets
