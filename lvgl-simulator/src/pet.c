@@ -1,5 +1,6 @@
 /** Electronic pet: grounded idle and one bounded happy jump per tap. */
 #include "pet.h"
+#include <string.h>
 
 /* 小黄鸡贴图数据（由 assets/runtime/chick/sprite_front_192.png 生成）。 */
 #include "pet_chick_192.c"
@@ -21,6 +22,9 @@ typedef struct {
     lv_timer_t *walk_frame_timer;
     lv_timer_t *blink_timer;
     uint8_t eyelid;
+    lv_obj_t *wings[2];
+    lv_timer_t *wing_timer;
+    int32_t wing_angle;
     pet_state_t state;
     uint8_t walk_frame;
 } pet_runtime_t;
@@ -30,6 +34,99 @@ static const lv_image_dsc_t * const walk_frames[] = {
     &pet_chick_walk_0, &pet_chick_walk_1,
     &pet_chick_walk_2, &pet_chick_walk_3,
 };
+
+/* Native articulated sprite parts; source artwork stays immutable. */
+#define WING_W 32
+#define WING_H 52
+static uint8_t body_pixels[PET_SPRITE_SIZE * PET_SPRITE_SIZE * 4];
+static uint8_t wing_pixels[2][WING_W * WING_H * 4];
+static lv_image_dsc_t body_sprite;
+static lv_image_dsc_t wing_sprites[2];
+
+static int32_t wing_edge(unsigned side, int32_t y)
+{
+    if(side == 0) return 40 - (y - 94) * 5 / 43;
+    return 151 + (y - 98) * 4 / 41;
+}
+
+static void prepare_wing_parts(void)
+{
+    body_sprite = pet_chick_192;
+    body_sprite.data = body_pixels;
+    memcpy(body_pixels, pet_chick_192.data, sizeof(body_pixels));
+    memset(wing_pixels, 0, sizeof(wing_pixels));
+    for(unsigned side = 0; side < 2; side++) {
+        int32_t origin_x = side == 0 ? 18 : 144;
+        for(int32_t y = 92; y < 92 + WING_H; y++) {
+            int32_t edge = wing_edge(side, y);
+            for(int32_t x = origin_x; x < origin_x + WING_W; x++) {
+                bool wing = side == 0 ? (y >= 94 && y <= 137 && x < edge)
+                                      : (y >= 98 && y <= 139 && x > edge);
+                if(!wing) continue;
+                uint32_t source = y * pet_chick_192.header.stride + x * 4;
+                uint32_t dest = ((y - 92) * WING_W + x - origin_x) * 4;
+                memcpy(&wing_pixels[side][dest], &pet_chick_192.data[source], 4);
+                /* Two pixels of shoulder overlap keep the joint closed. */
+                if(side == 0 ? x < edge - 2 : x > edge + 2) {
+                    int32_t body_edge = side == 0 ? 34 + (y > 114 ? (y - 114) / 5 : 0)
+                                                 : 153 - (y > 114 ? (y - 114) / 5 : 0);
+                    bool inside_body = side == 0 ? x >= body_edge : x <= body_edge;
+                    if(inside_body) {
+                        int32_t sample_x = side == 0 ? 48 : 140;
+                        memcpy(&body_pixels[source], &pet_chick_192.data[y * pet_chick_192.header.stride + sample_x * 4], 4);
+                    }
+                    else body_pixels[source + 3] = 0;
+                }
+            }
+        }
+        wing_sprites[side] = pet_chick_192;
+        wing_sprites[side].header.w = WING_W;
+        wing_sprites[side].header.h = WING_H;
+        wing_sprites[side].header.stride = WING_W * 4;
+        wing_sprites[side].data_size = sizeof(wing_pixels[side]);
+        wing_sprites[side].data = wing_pixels[side];
+    }
+}
+
+static void wing_anim_cb(void *var, int32_t angle)
+{
+    (void)var;
+    s_pet.wing_angle = angle;
+    lv_image_set_rotation(s_pet.wings[0], angle);
+    lv_image_set_rotation(s_pet.wings[1], -angle * 9 / 10);
+}
+
+static void schedule_wings(void)
+{
+    lv_timer_set_period(s_pet.wing_timer, lv_rand(6500, 11000));
+    lv_timer_reset(s_pet.wing_timer);
+}
+
+static void wing_ready_cb(lv_anim_t *a)
+{
+    (void)a;
+    wing_anim_cb(s_pet.pet, 0);
+    schedule_wings();
+    if(s_pet.state == PET_STATE_IDLE) lv_timer_resume(s_pet.wing_timer);
+}
+
+static void wing_timer_cb(lv_timer_t *timer)
+{
+    if(s_pet.state != PET_STATE_IDLE) return;
+    lv_timer_pause(timer);
+    lv_anim_t flap;
+    lv_anim_init(&flap);
+    lv_anim_set_var(&flap, s_pet.pet);
+    lv_anim_set_exec_cb(&flap, wing_anim_cb);
+    lv_anim_set_values(&flap, 0, 180);
+    lv_anim_set_duration(&flap, 180);
+    lv_anim_set_reverse_duration(&flap, 230);
+    lv_anim_set_repeat_count(&flap, 2);
+    lv_anim_set_repeat_delay(&flap, 90);
+    lv_anim_set_path_cb(&flap, lv_anim_path_ease_in_out);
+    lv_anim_set_completed_cb(&flap, wing_ready_cb);
+    lv_anim_start(&flap);
+}
 
 /*********************
  *   STATIC PROTOTYPES
@@ -172,6 +269,8 @@ static void shadow_delete_cb(lv_event_t *e)
 static void pet_delete_cb(lv_event_t *e)
 {
     (void)e;
+    lv_timer_delete(s_pet.wing_timer);
+    lv_anim_delete(s_pet.pet, wing_anim_cb);
     lv_timer_delete(s_pet.blink_timer);
     lv_timer_delete(s_pet.walk_frame_timer);
     lv_anim_delete(s_pet.img, eyelid_anim_cb);
@@ -194,13 +293,14 @@ static void pet_click_cb(lv_event_t *e)
     if(indev == NULL) return;
     lv_point_t point;
     lv_indev_get_point(indev, &point);
-    lv_obj_transform_point(s_pet.img, &point, LV_OBJ_POINT_TRANSFORM_FLAG_INVERSE_RECURSIVE);
+    lv_obj_t *target = lv_event_get_target_obj(e);
+    lv_obj_transform_point(target, &point, LV_OBJ_POINT_TRANSFORM_FLAG_INVERSE_RECURSIVE);
     lv_area_t area;
-    lv_obj_get_coords(s_pet.img, &area);
+    lv_obj_get_coords(target, &area);
     int32_t x = point.x - area.x1;
     int32_t y = point.y - area.y1;
-    const lv_image_dsc_t *src = lv_image_get_src(s_pet.img);
-    if(x < 0 || y < 0 || x >= PET_SPRITE_SIZE || y >= PET_SPRITE_SIZE) return;
+    const lv_image_dsc_t *src = lv_image_get_src(target);
+    if(x < 0 || y < 0 || x >= src->header.w || y >= src->header.h) return;
     if(src->data[y * src->header.stride + x * 4 + 3] <= 32) return;
     pet_set_state(PET_STATE_HAPPY);
 }
@@ -233,6 +333,12 @@ void pet_set_state(pet_state_t state)
 {
     if(s_pet.pet == NULL || s_pet.img == NULL) return;
 
+    lv_anim_delete(s_pet.pet, wing_anim_cb);
+    wing_anim_cb(s_pet.pet, 0);
+    lv_timer_pause(s_pet.wing_timer);
+    schedule_wings();
+    bool articulated = state == PET_STATE_IDLE;
+    for(unsigned i = 0; i < 2; i++) lv_obj_set_hidden(s_pet.wings[i], !articulated);
     lv_anim_delete(s_pet.img, eyelid_anim_cb);
     eyelid_anim_cb(s_pet.img, 0);
     lv_timer_pause(s_pet.blink_timer);
@@ -285,6 +391,8 @@ void pet_set_state(pet_state_t state)
         default:
             lv_timer_pause(s_pet.walk_frame_timer);
             lv_img_set_src(s_pet.img, &pet_chick_192);
+            lv_img_set_src(s_pet.img, &body_sprite);
+            lv_timer_resume(s_pet.wing_timer);
             lv_timer_resume(s_pet.blink_timer);
             /* Feet stay planted during idle breathing. */
             break;
@@ -345,6 +453,16 @@ void pet_create(lv_obj_t *parent, lv_coord_t w, lv_coord_t h)
     lv_obj_add_event_cb(pet, pet_delete_cb, LV_EVENT_DELETE, NULL);
 
 
+    prepare_wing_parts();
+    for(unsigned i = 0; i < 2; i++) {
+        s_pet.wings[i] = lv_image_create(pet);
+        lv_image_set_src(s_pet.wings[i], &wing_sprites[i]);
+        lv_obj_set_pos(s_pet.wings[i], i == 0 ? 18 : 144, 92);
+        lv_image_set_pivot(s_pet.wings[i], i == 0 ? 22 : 8, i == 0 ? 17 : 22);
+        lv_obj_set_clickable(s_pet.wings[i], true);
+        lv_obj_add_event_cb(s_pet.wings[i], pet_click_cb, LV_EVENT_CLICKED, NULL);
+    }
+    s_pet.wing_timer = lv_timer_create(wing_timer_cb, 8000, &s_pet);
     s_pet.pet = pet;
     s_pet.img = img;
     s_pet.walk_frame = 0;
