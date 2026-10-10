@@ -1,0 +1,6 @@
+[submodule "lvgl-simulator/lvgl"]
+	path = lvgl-simulator/lvgl
+	url = https://github.com/lvgl/lvgl.git
+[submodule "lvgl-simulator/FreeRTOS"]
+	path = lvgl-simulator/FreeRTOS
+	url = https://github.com/FreeRTOS/FreeRTOS-Kernel.git

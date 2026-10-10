@@ -1,0 +1,13 @@
+# Ignore build folder
+build/
+bin/
+sim.log
+
+# Ignore all dot folders, with below exceptions
+.*/
+
+# VSCode
+.vscode
+
+# MacOS file
+.DS_Store
