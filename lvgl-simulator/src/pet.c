@@ -19,6 +19,8 @@ typedef struct {
     lv_obj_t *shadow;
     int32_t ground_y;
     lv_timer_t *walk_frame_timer;
+    lv_timer_t *blink_timer;
+    uint8_t eyelid;
     pet_state_t state;
     uint8_t walk_frame;
 } pet_runtime_t;
@@ -78,6 +80,105 @@ static void translate_x_anim_cb(void *var, int32_t v)
     if(s_pet.shadow != NULL) lv_obj_set_style_translate_x(s_pet.shadow, v, 0);
 }
 
+/* Eyelids are native LVGL drawing, independent of body transforms.
+ * Coordinates refer to the unchanged 192px front sprite only. */
+static void eyelid_anim_cb(void *var, int32_t value)
+{
+    (void)var;
+    s_pet.eyelid = (uint8_t)value;
+    lv_obj_invalidate(s_pet.img);
+}
+
+static void schedule_blink(void)
+{
+    lv_timer_set_period(s_pet.blink_timer, lv_rand(2800, 5200));
+    lv_timer_reset(s_pet.blink_timer);
+}
+
+static void blink_ready_cb(lv_anim_t *a)
+{
+    (void)a;
+    eyelid_anim_cb(s_pet.img, 0);
+    schedule_blink();
+    if(s_pet.state == PET_STATE_IDLE) lv_timer_resume(s_pet.blink_timer);
+}
+
+static void blink_timer_cb(lv_timer_t *timer)
+{
+    if(s_pet.state != PET_STATE_IDLE) return;
+    lv_timer_pause(timer);
+    lv_anim_t blink;
+    lv_anim_init(&blink);
+    lv_anim_set_var(&blink, s_pet.img);
+    lv_anim_set_exec_cb(&blink, eyelid_anim_cb);
+    lv_anim_set_values(&blink, 0, 100);
+    lv_anim_set_duration(&blink, 65);
+    lv_anim_set_reverse_delay(&blink, 55);
+    lv_anim_set_reverse_duration(&blink, 85);
+    lv_anim_set_path_cb(&blink, lv_anim_path_ease_in_out);
+    lv_anim_set_completed_cb(&blink, blink_ready_cb);
+    lv_anim_start(&blink);
+}
+
+static void eye_draw_cb(lv_event_t *e)
+{
+    if(s_pet.eyelid == 0 || s_pet.state != PET_STATE_IDLE) return;
+    lv_layer_t *layer = lv_event_get_layer(e);
+    lv_area_t image_area;
+    lv_obj_get_coords(s_pet.img, &image_area);
+    /* Small eye regions avoid the eyebrows, cheeks and beak. */
+    static const lv_area_t eyes[] = {{60, 64, 76, 82}, {112, 67, 127, 85}};
+    for(unsigned eye = 0; eye < 2; eye++) {
+        const lv_area_t *box = &eyes[eye];
+        int32_t cover = (box->y2 - box->y1 + 1) * s_pet.eyelid / 100;
+        for(int32_t y = box->y1; y < box->y1 + cover; y++) {
+            /* Sample adjacent feather color from the immutable BGRA image. */
+            int32_t sample_x = eye == 0 ? 79 : 109;
+            const uint8_t *pixel = pet_chick_192.data + y * pet_chick_192.header.stride + sample_x * 4;
+            lv_draw_rect_dsc_t lid;
+            lv_draw_rect_dsc_init(&lid);
+            lid.bg_color = lv_color_make(pixel[2], pixel[1], pixel[0]);
+            lid.bg_opa = LV_OPA_COVER;
+            lid.border_width = 0;
+            lv_area_t row = {image_area.x1 + box->x1, image_area.y1 + y,
+                             image_area.x1 + box->x2, image_area.y1 + y};
+            lv_draw_rect(layer, &lid, &row);
+        }
+        if(s_pet.eyelid >= 90) {
+            /* A shallow downward curve reads as relaxed closed eyes. */
+            lv_draw_line_dsc_t line;
+            lv_draw_line_dsc_init(&line);
+            line.color = lv_color_hex(0x382416);
+            line.width = 2;
+            line.round_start = line.round_end = 1;
+            int32_t x = image_area.x1 + box->x1 + 2;
+            int32_t y = image_area.y1 + (box->y1 + box->y2) / 2;
+            line.p1 = (lv_point_precise_t){x, y};
+            line.p2 = (lv_point_precise_t){x + 5, y + 2};
+            lv_draw_line(layer, &line);
+            line.p1 = line.p2;
+            line.p2 = (lv_point_precise_t){image_area.x1 + box->x2 - 2, y};
+            lv_draw_line(layer, &line);
+        }
+    }
+}
+
+static void shadow_delete_cb(lv_event_t *e)
+{
+    (void)e;
+    s_pet.shadow = NULL;
+}
+
+static void pet_delete_cb(lv_event_t *e)
+{
+    (void)e;
+    lv_timer_delete(s_pet.blink_timer);
+    lv_timer_delete(s_pet.walk_frame_timer);
+    lv_anim_delete(s_pet.img, eyelid_anim_cb);
+    if(s_pet.shadow != NULL) lv_obj_delete(s_pet.shadow);
+    s_pet = (pet_runtime_t){0};
+}
+
 /* Happy motion owns vertical movement until landing. Repeated taps are ignored. */
 static void bounce_y_ready_cb(lv_anim_t *a)
 {
@@ -132,6 +233,10 @@ void pet_set_state(pet_state_t state)
 {
     if(s_pet.pet == NULL || s_pet.img == NULL) return;
 
+    lv_anim_delete(s_pet.img, eyelid_anim_cb);
+    eyelid_anim_cb(s_pet.img, 0);
+    lv_timer_pause(s_pet.blink_timer);
+    schedule_blink();
     lv_anim_del(s_pet.pet, y_anim_cb);
     lv_anim_del(s_pet.pet, translate_x_anim_cb);
     lv_obj_set_style_translate_x(s_pet.pet, 0, 0);
@@ -180,6 +285,7 @@ void pet_set_state(pet_state_t state)
         default:
             lv_timer_pause(s_pet.walk_frame_timer);
             lv_img_set_src(s_pet.img, &pet_chick_192);
+            lv_timer_resume(s_pet.blink_timer);
             /* Feet stay planted during idle breathing. */
             break;
     }
@@ -206,6 +312,7 @@ void pet_create(lv_obj_t *parent, lv_coord_t w, lv_coord_t h)
     lv_obj_set_style_transform_pivot_x(shadow, 55, 0);
     lv_obj_set_clickable(shadow, false);
     lv_obj_set_scrollable(shadow, false);
+    lv_obj_add_event_cb(shadow, shadow_delete_cb, LV_EVENT_DELETE, NULL);
     s_pet.shadow = shadow;
     s_pet.ground_y = (h - PET_SPRITE_SIZE) / 2 - 20;
 
@@ -234,6 +341,8 @@ void pet_create(lv_obj_t *parent, lv_coord_t w, lv_coord_t h)
     /* 可点击，触发开心弹跳 */
     lv_obj_set_clickable(img, true);
     lv_obj_add_event_cb(img, pet_click_cb, LV_EVENT_CLICKED, pet);
+    lv_obj_add_event_cb(img, eye_draw_cb, LV_EVENT_DRAW_MAIN_END, NULL);
+    lv_obj_add_event_cb(pet, pet_delete_cb, LV_EVENT_DELETE, NULL);
 
 
     s_pet.pet = pet;
@@ -241,6 +350,8 @@ void pet_create(lv_obj_t *parent, lv_coord_t w, lv_coord_t h)
     s_pet.walk_frame = 0;
     s_pet.walk_frame_timer = lv_timer_create(walk_frame_timer_cb, 150, &s_pet);
     lv_timer_pause(s_pet.walk_frame_timer);
+    s_pet.eyelid = 0;
+    s_pet.blink_timer = lv_timer_create(blink_timer_cb, 4000, &s_pet);
 
 
     /* Gentle breathing anchored at the feet; no idle vertical drift. */
