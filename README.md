@@ -31,7 +31,7 @@
 
 ```bash
 # 编译模拟器（tools/venv 提供 cmake + ninja）
-cd ~/DoubaoWork/chats/2026-10-09/new-chat-2/lvgl-simulator
+cd ~/Documents/trae_projects/mini/lvgl-simulator
 ../tools/venv/bin/cmake --build build -j8
 
 # 运行模拟器（需 DYLD_LIBRARY_PATH 指向本地 SDL2）
