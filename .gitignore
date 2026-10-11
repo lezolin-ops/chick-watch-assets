@@ -8,5 +8,12 @@
 # Downloaded/build-time tooling. Cloud setup recreates these.
 /tools/
 
+# Firmware: keep only sources; build/component/backup artifacts are reproducible.
+/firmware/build/
+/firmware/managed_components/
+/firmware/backup/
+/firmware/sdkconfig
+/firmware/sdkconfig.old
+
 # Operating-system metadata.
 .DS_Store

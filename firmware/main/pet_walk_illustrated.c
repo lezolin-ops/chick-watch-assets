@@ -1,0 +1,8 @@
+#include "pet_walk_illustrated_right_0.c"
+#include "pet_walk_illustrated_left_0.c"
+#include "pet_walk_illustrated_right_1.c"
+#include "pet_walk_illustrated_left_1.c"
+#include "pet_walk_illustrated_right_2.c"
+#include "pet_walk_illustrated_left_2.c"
+#include "pet_walk_illustrated_right_3.c"
+#include "pet_walk_illustrated_left_3.c"

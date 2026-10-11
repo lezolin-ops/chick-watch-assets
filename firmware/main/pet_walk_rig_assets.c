@@ -1,0 +1,6 @@
+#include "pet_rig_foot_near_right.c"
+#include "pet_rig_foot_near_left.c"
+#include "pet_rig_foot_far_right.c"
+#include "pet_rig_foot_far_left.c"
+#include "pet_rig_body_right.c"
+#include "pet_rig_body_left.c"

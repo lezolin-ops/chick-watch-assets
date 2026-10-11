@@ -1,0 +1,8 @@
+## 电子宠物固件依赖：仅 BSP + LVGL（音频/USB 组件不需要，避免 IDF 版本冲突）
+## lvgl 9.6.0 与电脑模拟器(v9.6.0-master)统一版本，消除 API 差异（2026-10-11 决定，见 FIRMWARE.md）
+dependencies:
+  waveshare/esp32_s3_touch_amoled_2_06:
+    version: "^2.0.0"
+  lvgl/lvgl:
+    version: "^9.6.0"
+    public: true
