@@ -1,0 +1,2 @@
+Built-in imagegen edit of wing_parts/wing_right.png.
+Remove the entire thick outer rump crescent and its orange outside border. Keep only the inner three-lobed yellow feather wing with thin orange contour, upper-right shoulder root and lower-left tips. No body slice, second outer contour, large backing mass, face, feet, gloss or extra parts. Preserve warm yellow/orange style and transparent background. Runtime wing only: 42x34, pivot (37,10), no body regeneration.

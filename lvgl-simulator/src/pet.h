@@ -5,7 +5,7 @@
  * 本模块只依赖 LVGL，不依赖任何平台（SDL 模拟器 / ESP-IDF 真机共用）。
  * 真机移植时仅需传入实际屏幕宽高，代码无需改动。
  *
- * 当前实现：P0 动画（呼吸 / 心跳 / 眨眼 / 待机微动）和 192 像素透明小黄鸡贴图。
+ * 当前实现：清醒日常循环（窝坐 / 起身 / 发呆 / 散步 / 返回 / 窝下）。
  */
 #ifndef PET_H
 #define PET_H
@@ -19,7 +19,6 @@ extern "C" {
 typedef enum {
     PET_STATE_IDLE,
     PET_STATE_WALK,
-    PET_STATE_HAPPY,
     PET_STATE_HUNGRY,
     PET_STATE_SLEEP,
 } pet_state_t;
@@ -32,7 +31,7 @@ typedef enum {
  */
 void pet_create(lv_obj_t *parent, lv_coord_t w, lv_coord_t h);
 
-/** @brief Switch the active pet animation state. */
+/** @brief IDLE resumes daily behavior; HUNGRY/SLEEP pause it until explicitly changed. */
 void pet_set_state(pet_state_t state);
 
 #ifdef __cplusplus

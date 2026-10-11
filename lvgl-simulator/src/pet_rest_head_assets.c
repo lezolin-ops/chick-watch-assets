@@ -1,0 +1,6 @@
+#include "pet_rest_head_0_right.c"
+#include "pet_rest_head_0_left.c"
+#include "pet_rest_head_1_right.c"
+#include "pet_rest_head_1_left.c"
+#include "pet_rest_head_2_right.c"
+#include "pet_rest_head_2_left.c"

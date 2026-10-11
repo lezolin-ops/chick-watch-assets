@@ -8,8 +8,12 @@ This project is pre-configured for VSCode and should work work on Windows, Linux
 
 - 模拟器画布：410 × 502，与微雪 2.06 英寸 AMOLED 的目标分辨率一致。
 - 宠物素材：`src/pet_chick_192.c`，由角色设定包的透明主立绘导出；走路、饥饿与睡觉贴图均位于 `assets/runtime/chick/`。
-- 宠物入口：`src/pet.c`；包含待机、四帧走路、开心弹跳、饥饿、睡觉，以及呼吸、心跳和眨眼微动画。
-- 演示会每 5 秒自动轮换：待机 → 走路 → 饥饿 → 睡觉；点击小鸡会触发开心弹跳。
+- 宠物入口：`src/pet.c`；清醒日常、独立脚步、眨眼、嘴部、正侧面翅膀及呆毛跟随动画。饥饿与睡眠由外部接口切换。
+- 中心窝坐 24–45 秒；起身后约 70% 散步往返、30% 观察后窝下。左右张望之外，低头约 20%、望天空约 10%，两者互斥。
+- 背景为清晨草地·家；无点击交互、整体缩放或上下漂浮。饥饿与睡觉仅通过接口显式触发。
+- 分镜与时长见 `DAILY_ANIMATION.md`；动作图集位于 `assets/runtime/chick/daily/`。
+- 走路修订素材：`assets/runtime/chick/walk_rig_v3/`，固定身体与两个独立脚掌贴图，按实际位移控制两脚交替支撑、抬脚和前摆。独立眼部眨眼持续贯穿清醒日常循环。
+- 嘴部默认闭合，安静时约每 20–40 秒短暂开合（约 0.4 秒）；走路、转头、轻扇翅膀及过渡时不触发，回正后留安静停顿。
 - 运行贴图转换工具：`tools/prepare_chick_sprite.py`、`tools/prepare_walk_sprites.py`、`tools/prepare_state_sprites.py` 和 `tools/generate_lvgl_argb8888.py`。
 
 ## Get started

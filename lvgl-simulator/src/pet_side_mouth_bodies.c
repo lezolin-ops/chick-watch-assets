@@ -1,0 +1,6 @@
+#include "pet_side_body_0_right.c"
+#include "pet_side_body_0_left.c"
+#include "pet_side_body_1_right.c"
+#include "pet_side_body_1_left.c"
+#include "pet_side_body_2_right.c"
+#include "pet_side_body_2_left.c"

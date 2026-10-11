@@ -1,0 +1,5 @@
+#include "pet_scene_base.c"
+#include "pet_scene_grass_0.c"
+#include "pet_scene_grass_1.c"
+#include "pet_scene_flowers_0.c"
+#include "pet_scene_flowers_1.c"

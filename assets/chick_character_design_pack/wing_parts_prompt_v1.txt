@@ -1,0 +1,2 @@
+Built-in imagegen precise object edit. Reference side_mouth_bodies_v1/0_right.png.
+Two equal transparent cells: exact original legless side chick with wing removed and smooth yellow rump restored; isolated original feather-lobed yellow wing with shoulder at upper right. Preserve original warm yellow, orange outlines, face and shape. No new highlights or styling. Runtime packs shoulder-rooted wing as a separate child image and preserves the original face/belly pixels outside the restored body area.

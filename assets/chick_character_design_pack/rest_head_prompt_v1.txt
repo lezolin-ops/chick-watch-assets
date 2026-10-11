@@ -1,0 +1,2 @@
+Built-in imagegen. Reference: assets/runtime/chick/daily/right_0.png.
+Three equal columns, transparent background: seated chick head yaw right 15, 30, 45 degrees. Keep body frontal, wings and tucked feet fixed. Preserve original warm yellow, thin orange outline, black eyes, cheeks, tuft and closed matte orange bill. No gloss, lip highlight, scale change, standing or body turn. Left views mirrored during packaging; original lower body/feet shared by all directions.

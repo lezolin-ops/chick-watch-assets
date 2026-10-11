@@ -1,5 +1,9 @@
-# Local simulator checkout; synchronized separately as its own repository.
-/lvgl-simulator/
+# Keep local build/dependency files out, while including new simulator sources.
+/lvgl-simulator/*
+!/lvgl-simulator/src/
+!/lvgl-simulator/tools/
+!/lvgl-simulator/DAILY_ANIMATION.md
+/lvgl-simulator/tools/__pycache__/
 
 # Downloaded/build-time tooling. Cloud setup recreates these.
 /tools/

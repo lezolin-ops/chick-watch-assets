@@ -1,0 +1,5 @@
+Built-in imagegen edit workflow (not CLI).
+Reference: daily_cycle_source_v1.png, original character palette and clean matte orange bird beak.
+Side target: three equal columns of identical legless side portraits, closed/half/open. Restore warm lemon yellow; remove pale body rim lights. Preserve silhouettes and eyes, transparent background.
+Beak target: 3x3 isolated beaks, rows front/quarter/profile; columns closed/half/open. Simple triangular bird bills, solid orange #FF7028 upper and #E65518 lower, dark red cavity. No lip gloss, shiny streak, pink tongue highlight or halo. Preserve grid and transparent alpha.
+Final runtime also suppresses residual orange specular streaks only in the side bill ROI. Body and eye colours are never graded.

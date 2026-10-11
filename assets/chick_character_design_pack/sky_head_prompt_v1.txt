@@ -1,0 +1,2 @@
+Built-in imagegen precise object edit; reference daily/right_0.png.
+Three equal transparent columns: same front-facing seated chick gently pitches head up 8/16/24 degrees toward sky. Only head/face/eyes/closed matte orange bill change. Fixed frontal belly, wings, tucked feet, baseline, size; original warm yellow, thin orange outline, pink cheeks, black eyes with original highlights, tuft. No sideways yaw, whole-body leaning, scale change, floating, neck, new facial features, open mouth, gloss, text or background. Packaging shares the original lower-body pixels.

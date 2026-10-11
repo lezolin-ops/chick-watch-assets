@@ -1,330 +1,789 @@
-/**
- * @file pet.c
- * @brief 电子宠物核心模块实现（P0 动画 + 小黄鸡形象）
- *
- * 平台无关：仅依赖 LVGL v9，模拟器与真机共用。
- *
- * 形象：小黄鸡贴图（由项目中的透明 PNG 生成，192×192 规格，
- *       见 pet_chick_192.c）。
- *
- * P0 动画清单（来自《电子宠物动画系统技术实现清单.md》）：
- *  1. 呼吸动画：主体缩放循环插值（ease_in_out + 无限循环 + 双向播放）
- *  2. 心跳动画：定时触发的快速缩放脉冲（overshoot 回弹路径）
- *  3. 眨眼动画：贴图 Y 轴快速压缩回弹（模拟闭眼点头）
- *  4. 待机微动：主体 Y 轴轻微上下浮动（无限循环）
- *
- * 属性冲突规避：呼吸作用于 pet_group.scale、心跳作用于 img.scale、
- * 眨眼作用于 img.scale_y、微动作用于 pet_group.y，四者互不干扰。
- */
-
+/** Grounded daily behavior, driven by pose frames and horizontal walking. */
 #include "pet.h"
-
-/* 小黄鸡贴图数据（由 assets/runtime/chick/sprite_front_192.png 生成）。 */
-#include "pet_chick_192.c"
-#include "pet_chick_walk_0.c"
-#include "pet_chick_walk_1.c"
-#include "pet_chick_walk_2.c"
-#include "pet_chick_walk_3.c"
 #include "pet_chick_hungry.c"
 #include "pet_chick_sleep.c"
+#include "bg_morning_meadow_home.c"
+#include "pet_daily_sprites.c"
+#include "pet_walk_rig_assets.c"
+#include "pet_blink_geometry.h"
+#include "pet_rest_head_assets.c"
+#include "pet_rest_head_eyes.h"
+#include "pet_sky_head_assets.c"
+#include "pet_sky_head_eyes.h"
+#include "pet_ground_head_assets.c"
+#include "pet_ground_head_eyes.h"
+#include "pet_walk_gait.h"
+#include "pet_mouth_geometry.h"
+#include "pet_beak_assets.c"
+#include "pet_side_mouth_bodies.c"
+#include "pet_side_body_eyes.h"
+#include <string.h>
+#include "pet_material_palette.h"
+#include "pet_wing_frames.c"
+#include "pet_wing_animation.h"
+#include "pet_front_flap_patches.c"
+#include "pet_front_wing.h"
+#include "pet_walk_expression.h"
+#include "pet_scene.h"
+#include "pet_tuft.h"
 
-#define PET_SPRITE_SIZE 192
-#define PET_SPRITE_PIVOT (PET_SPRITE_SIZE / 2)
+/* Keep illustrated bitmap feet; animate each foot independently by distance. */
+
+typedef enum {
+    REST, RISE, STAND, LOOK, OUT, SETTLE_OUT, TURN, BACK, SETTLE_BACK, FACE, PAUSE, SIT
+} daily_phase_t;
 
 typedef struct {
     lv_obj_t *pet;
     lv_obj_t *img;
-    lv_timer_t *walk_frame_timer;
-    lv_timer_t *heartbeat_timer;
+    lv_obj_t *shadow;
+    lv_obj_t *feet[2]; /* near/left and far/right keep their identities */
+    lv_obj_t *wing;
+    unsigned wing_frame,wing_settle_start;
+    const lv_image_dsc_t *front_base;
+    bool front_seated,front_flapping,front_flap_used,front_flap_enabled;
+    uint32_t front_flap_started,front_flap_wait;
+    walk_foot_pose_t foot_poses[2];
+    lv_timer_t *timer;
     lv_timer_t *blink_timer;
-    pet_state_t state;
-    uint8_t walk_frame;
+    lv_timer_t *mouth_timer;
+    const mouth_pose_t *mouth;
+    uint32_t mouth_started, mouth_wait;
+    uint8_t mouth_stage;
+    bool calling;
+    bool side_portrait;
+    bool head_turning;
+    bool sky_chosen,sky_used,head_is_sky;
+    bool ground_chosen,ground_used,head_is_ground;
+    bool will_walk,head_has_returned;
+    uint32_t head_returned;
+    uint32_t head_started,head_wait,head_hold;
+    int head_direction;
+    unsigned head_frame;
+    int gaze_offset;
+    int gaze_y;
+    lv_obj_t *eye_glances[2];
+    lv_image_dsc_t eye_glance_images[2];
+    uint8_t eye_glance_pixels[2][32*32*4];
+    lv_obj_t *eye_covers[2];
+    lv_obj_t *eye_pupils[2];
+    lv_obj_t *eye_lines[2];
+    lv_point_precise_t eyelid_points[2][5];
+    const eye_pose_t *eyes;
+    uint32_t blink_started, blink_wait;
+    uint8_t blink_stage;
+    bool blinking, awake;
+    int eye_direction;
+    daily_phase_t phase;
+    uint32_t started, duration;
+    int32_t x, from_x, target_x, excursion;
+    int direction;
+    bool walk_pause;
+    tuft_motion_t tuft;
+    uint32_t walk_pause_ms,walk_first_ms;
+    float walk_checkpoint;
 } pet_runtime_t;
 
 static pet_runtime_t s_pet;
-static const lv_image_dsc_t * const walk_frames[] = {
-    &pet_chick_walk_0, &pet_chick_walk_1,
-    &pet_chick_walk_2, &pet_chick_walk_3,
+static const lv_image_dsc_t * const frames[2][12] = {
+    { &pet_daily_right_0, &pet_daily_right_1, &pet_daily_right_2,
+      &pet_daily_right_3, &pet_daily_right_4, &pet_daily_right_5,
+      &pet_daily_right_6, &pet_daily_right_7, &pet_daily_right_8,
+      &pet_daily_right_9, &pet_daily_right_10, &pet_daily_right_11 },
+    { &pet_daily_left_0, &pet_daily_left_1, &pet_daily_left_2,
+      &pet_daily_left_3, &pet_daily_left_4, &pet_daily_left_5,
+      &pet_daily_left_6, &pet_daily_left_7, &pet_daily_left_8,
+      &pet_daily_left_9, &pet_daily_left_10, &pet_daily_left_11 }
+};
+static const lv_image_dsc_t * const foot_images[2][2] = {
+    { &pet_rig_foot_near_right, &pet_rig_foot_far_right },
+    { &pet_rig_foot_near_left, &pet_rig_foot_far_left }
+};
+static const lv_image_dsc_t * const side_bodies[2][3] = {
+    { &pet_side_body_0_right, &pet_side_body_1_right, &pet_side_body_2_right },
+    { &pet_side_body_0_left, &pet_side_body_1_left, &pet_side_body_2_left }
+};
+static void render_eyes(void);
+static void refresh_side_portrait(void);
+static uint32_t palette_skin_color(int canonical_x,int y)
+{
+    const lv_image_dsc_t *image=lv_img_get_src(s_pet.img);
+    for(int dy=0;dy<=4;dy++) for(int dx=0;dx<=6;dx++) {
+        int x=canonical_x-dx, yy=y+dy;
+        if(s_pet.eye_direction<0) x=191-x;
+        if(x<0 || x>=192 || yy<0 || yy>=192) continue;
+        const uint8_t *p=image->data+yy*image->header.stride+x*4;
+        if(p[3]>200 && p[2]>230 && p[1]>185 && p[0]<135)
+            return (p[2]<<16)|(p[1]<<8)|p[0];
+    }
+    return 0xFCD53B;
+}
+
+static uint8_t mouth_mask_data[192*192];
+static const lv_image_dsc_t mouth_mask={
+    .header={.magic=LV_IMAGE_HEADER_MAGIC,.cf=LV_COLOR_FORMAT_A8,
+             .flags=LV_IMAGE_FLAGS_MODIFIABLE,.w=192,.h=192,.stride=192},
+    .data_size=sizeof(mouth_mask_data),.data=mouth_mask_data,
+};
+static const lv_image_dsc_t * const beak_images[2][3][3]={
+    {
+        { &pet_beak_0_0_right, &pet_beak_0_1_right, &pet_beak_0_2_right },
+        { &pet_beak_1_0_right, &pet_beak_1_1_right, &pet_beak_1_2_right },
+        { &pet_beak_2_0_right, &pet_beak_2_1_right, &pet_beak_2_2_right },
+    },
+    {
+        { &pet_beak_0_0_left, &pet_beak_0_1_left, &pet_beak_0_2_left },
+        { &pet_beak_1_0_left, &pet_beak_1_1_left, &pet_beak_1_2_left },
+        { &pet_beak_2_0_left, &pet_beak_2_1_left, &pet_beak_2_2_left },
+    },
 };
 
-/*********************
- *   STATIC PROTOTYPES
- *********************/
-static void scale_anim_cb(void *var, int32_t v);
-static void scale_y_anim_cb(void *var, int32_t v);
-static void y_anim_cb(void *var, int32_t v);
-static void translate_x_anim_cb(void *var, int32_t v);
-
-static void start_heartbeat(lv_obj_t *img);
-static void heartbeat_timer_cb(lv_timer_t *t);
-static void start_blink(lv_obj_t *img);
-static void blink_timer_cb(lv_timer_t *t);
-
-static void bounce_y_ready_cb(lv_anim_t *a);
-static void pet_click_cb(lv_event_t *e);
-static void walk_frame_timer_cb(lv_timer_t *t);
-static void routine_timer_cb(lv_timer_t *t);
-
-static void start_loop_anim(lv_obj_t *obj, lv_anim_exec_xcb_t exec_cb,
-                            int32_t from, int32_t to, uint32_t duration,
-                            lv_anim_path_cb_t path_cb);
-
-/*********************
- *   STATIC FUNCTIONS
- *********************/
-
-/* LVGL v9 动画 exec 回调包装（统一签名 void (*)(void *, int32_t)） */
-static void scale_anim_cb(void *var, int32_t v)
+static void update_mouth_mask(void)
 {
-    lv_obj_set_style_transform_scale((lv_obj_t *)var, v, 0);
-}
-
-static void scale_y_anim_cb(void *var, int32_t v)
-{
-    lv_obj_set_style_transform_scale_y((lv_obj_t *)var, v, 0);
-}
-
-static void y_anim_cb(void *var, int32_t v)
-{
-    lv_obj_set_y((lv_obj_t *)var, v);
-}
-
-static void translate_x_anim_cb(void *var, int32_t v)
-{
-    lv_obj_set_style_translate_x((lv_obj_t *)var, v, 0);
-}
-
-/* ---- 心跳：定时触发的快速缩放脉冲（overshoot 回弹） ---- */
-static void start_heartbeat(lv_obj_t *img)
-{
-    /* 清除 img 上残留的缩放动画，避免叠加 */
-    lv_anim_del(img, scale_anim_cb);
-
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, img);
-    lv_anim_set_exec_cb(&a, scale_anim_cb);
-    /* 缩放单位：256 = 100%；296 ≈ 115.6%（overshoot 带回弹，形成心跳冲击） */
-    lv_anim_set_values(&a, 256, 296);
-    lv_anim_set_duration(&a, 170);
-    lv_anim_set_path_cb(&a, lv_anim_path_overshoot);
-    lv_anim_set_playback_duration(&a, 170);
-    lv_anim_start(&a);
-}
-
-static void heartbeat_timer_cb(lv_timer_t *t)
-{
-    start_heartbeat((lv_obj_t *)lv_timer_get_user_data(t));
-}
-
-/* ---- 眨眼：贴图 Y 轴快速压缩回弹（模拟闭眼点头） ---- */
-static void start_blink(lv_obj_t *img)
-{
-    lv_anim_del(img, scale_y_anim_cb);
-
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, img);
-    lv_anim_set_exec_cb(&a, scale_y_anim_cb);
-    /* 纵向压缩到约 92%，快速回弹，形成"眯眼"效果 */
-    lv_anim_set_values(&a, 256, 236);
-    lv_anim_set_duration(&a, 140);
-    lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
-    lv_anim_set_playback_duration(&a, 140);
-    lv_anim_start(&a);
-}
-
-static void blink_timer_cb(lv_timer_t *t)
-{
-    lv_obj_t *img = (lv_obj_t *)lv_timer_get_user_data(t);
-    start_blink(img);
-    /* 下一次眨眼间隔随机化（1.8s ~ 4.2s），模拟自然眨眼 */
-    lv_timer_set_period(t, lv_rand(1800, 4200));
-}
-
-/* ---- P1 交互：点击开心弹跳 ----
- * 点击后：身体放大回弹（bounce）+ 整只向上跳（bounce），
- * 跳完自动恢复待机微动（bounce_y_ready_cb 重启微动循环）。
- */
-static void bounce_y_ready_cb(lv_anim_t *a)
-{
-    lv_obj_t *pet = (lv_obj_t *)a->var;
-    start_loop_anim(pet, y_anim_cb, 0, -12, 1200, lv_anim_path_ease_in_out);
-}
-
-static void pet_click_cb(lv_event_t *e)
-{
-    lv_obj_t *img = lv_event_get_target(e);
-    lv_obj_t *pet = (lv_obj_t *)lv_event_get_user_data(e);
-
-    pet_set_state(PET_STATE_HAPPY);
-
-    /* 开心放大弹跳（作用于贴图，不干扰呼吸动画） */
-    lv_anim_del(img, scale_anim_cb);
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, img);
-    lv_anim_set_exec_cb(&a, scale_anim_cb);
-    lv_anim_set_values(&a, 256, 320);          /* 320 ≈ 125% */
-    lv_anim_set_duration(&a, 350);
-    lv_anim_set_path_cb(&a, lv_anim_path_bounce);
-    lv_anim_set_playback_duration(&a, 350);
-    lv_anim_start(&a);
-
-    /* 整只向上跳（先停掉待机微动，跳完恢复） */
-    lv_anim_del(pet, y_anim_cb);
-    lv_anim_t b;
-    lv_anim_init(&b);
-    lv_anim_set_var(&b, pet);
-    lv_anim_set_exec_cb(&b, y_anim_cb);
-    lv_anim_set_values(&b, 0, -40);
-    lv_anim_set_duration(&b, 280);
-    lv_anim_set_path_cb(&b, lv_anim_path_bounce);
-    lv_anim_set_playback_duration(&b, 280);
-    lv_anim_set_ready_cb(&b, bounce_y_ready_cb);
-    lv_anim_start(&b);
-}
-
-/* ---- 无限循环动画通用启动器 ---- */
-static void start_loop_anim(lv_obj_t *obj, lv_anim_exec_xcb_t exec_cb,
-                            int32_t from, int32_t to, uint32_t duration,
-                            lv_anim_path_cb_t path_cb)
-{
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, obj);
-    lv_anim_set_exec_cb(&a, exec_cb);
-    lv_anim_set_values(&a, from, to);
-    lv_anim_set_duration(&a, duration);
-    lv_anim_set_path_cb(&a, path_cb);
-    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
-    lv_anim_set_playback_duration(&a, duration);
-    lv_anim_start(&a);
-}
-
-static void walk_frame_timer_cb(lv_timer_t *t)
-{
-    pet_runtime_t *runtime = lv_timer_get_user_data(t);
-    runtime->walk_frame = (runtime->walk_frame + 1) % (sizeof(walk_frames) / sizeof(walk_frames[0]));
-    lv_img_set_src(runtime->img, walk_frames[runtime->walk_frame]);
-}
-
-static void routine_timer_cb(lv_timer_t *t)
-{
-    (void)t;
-    switch(s_pet.state) {
-        case PET_STATE_IDLE:   pet_set_state(PET_STATE_WALK); break;
-        case PET_STATE_WALK:   pet_set_state(PET_STATE_HUNGRY); break;
-        case PET_STATE_HUNGRY: pet_set_state(PET_STATE_SLEEP); break;
-        default:               pet_set_state(PET_STATE_IDLE); break;
+    const mouth_pose_t *m=s_pet.mouth;
+    if(m==NULL || !s_pet.awake || m->count==0 || m->mode==2) {
+        lv_obj_set_style_bitmap_mask_src(s_pet.img,NULL,0);
+        return;
     }
+    memset(mouth_mask_data,255,sizeof(mouth_mask_data));
+    for(unsigned i=0;i<m->count;i++) {
+        const mouth_row_t *r=&m->rows[i];
+        int x1=s_pet.eye_direction<0 ? 191-r->x2 : r->x1;
+        int x2=s_pet.eye_direction<0 ? 191-r->x1 : r->x2;
+        memset(mouth_mask_data+r->y*192+x1,0,x2-x1+1);
+    }
+    lv_obj_set_style_bitmap_mask_src(s_pet.img,&mouth_mask,0);
+}
+
+static void mouth_draw_cb(lv_event_t *event)
+{
+    const mouth_pose_t *m=s_pet.mouth;
+    if(!s_pet.awake || m==NULL || m->count==0 || m->mode==2) return;
+    lv_layer_t *layer=lv_event_get_layer(event);
+    lv_area_t origin;
+    lv_obj_get_coords(s_pet.img,&origin);
+    int direction=s_pet.eye_direction<0 ? -1 : 1;
+    lv_draw_rect_dsc_t fill;
+    lv_draw_rect_dsc_init(&fill);
+    fill.bg_opa=LV_OPA_COVER;
+    for(unsigned i=0;i<m->count;i++) {
+        const mouth_row_t *r=&m->rows[i];
+        int last=LV_MIN(r->x2,r->skin_x2);
+        if(last>=r->x1) {
+            int x1=direction<0 ? 191-last : r->x1;
+            int x2=direction<0 ? 191-r->x1 : last;
+            fill.bg_color=lv_color_hex(palette_skin_color(m->x-2,r->y));
+            lv_area_t a={origin.x1+x1,origin.y1+r->y,origin.x1+x2,origin.y1+r->y};
+            lv_draw_rect(layer,&fill,&a);
+        }
+        if(m->mode==2 && r->skin_x2>=r->x1 && r->skin_x2<=r->x2) {
+            int x=direction<0 ? 191-r->skin_x2 : r->skin_x2;
+            fill.bg_color=lv_color_hex(0xE99D1B);
+            lv_area_t a={origin.x1+x,origin.y1+r->y,origin.x1+x,origin.y1+r->y};
+            lv_draw_rect(layer,&fill,&a);
+        }
+    }
+    /* Embed the profile bill root into the restored cheek, not its outer edge. */
+    int attachment_x=m->cx-(m->mode==2 ? 3 : 0);
+    int cx=origin.x1+(direction<0 ? 191-attachment_x : attachment_x);
+    int anchor=m->mode==2 ? 4 : 16;
+    if(direction<0) anchor=31-anchor;
+    lv_draw_image_dsc_t art;
+    lv_draw_image_dsc_init(&art);
+    art.src=pet_color_image(beak_images[direction<0][m->mode][s_pet.mouth_stage]);
+    lv_area_t a={cx-anchor,origin.y1+m->cy-10,cx-anchor+31,origin.y1+m->cy+25};
+    lv_draw_image(layer,&art,&a);
+}
+
+static bool mouth_can_call(void)
+{
+    uint32_t phase_elapsed=lv_tick_elaps(s_pet.started);
+    return !s_pet.head_turning && !s_pet.front_flapping &&
+           (!s_pet.head_has_returned || lv_tick_elaps(s_pet.head_returned)>=1200) &&
+           phase_elapsed<s_pet.duration && s_pet.duration-phase_elapsed>1200 &&
+           s_pet.awake && s_pet.mouth != NULL &&
+           (s_pet.phase == REST || s_pet.phase == STAND || s_pet.phase == PAUSE);
+}
+
+static void mouth_timer_cb(lv_timer_t *timer)
+{
+    (void)timer;
+    if(!s_pet.awake || s_pet.mouth == NULL) return;
+    uint32_t elapsed = lv_tick_elaps(s_pet.mouth_started);
+    if(!s_pet.calling && elapsed >= s_pet.mouth_wait && mouth_can_call()) {
+        s_pet.calling = true;
+        s_pet.mouth_started = lv_tick_get();
+        elapsed = 0;
+    }
+    uint8_t stage = 0;
+    if(s_pet.calling) {
+        stage = elapsed < 100 ? 1 : elapsed < 240 ? 2 : elapsed < 340 ? 1 : 0;
+        if(elapsed >= 400) {
+            s_pet.calling = false;
+            s_pet.mouth_started = lv_tick_get();
+            s_pet.mouth_wait = lv_rand(20000, 40000);
+        }
+    }
+    if(stage != s_pet.mouth_stage) {
+        s_pet.mouth_stage = stage;
+        refresh_side_portrait();
+        lv_obj_invalidate(s_pet.img);
+    }
+}
+
+static void render_eyes(void)
+{
+    for(unsigned i = 0; i < 2; i++) {
+        bool visible = s_pet.awake && (s_pet.blink_stage != 0 || s_pet.gaze_offset != 0 || s_pet.gaze_y != 0) && s_pet.eyes != NULL && i < s_pet.eyes->count;
+        lv_obj_set_hidden(s_pet.eye_covers[i], !visible);
+        if(!visible) continue;
+        const eye_region_t *e = &s_pet.eyes->eyes[i];
+        int x = s_pet.eye_direction < 0 ? 192 - e->x - e->w : e->x;
+        bool glance=(s_pet.gaze_offset!=0 || s_pet.gaze_y!=0) && s_pet.blink_stage==0;
+        lv_obj_set_pos(s_pet.eye_covers[i], x-(glance ? 2 : 0), e->y-(glance ? 2 : 0));
+        lv_obj_set_size(s_pet.eye_covers[i], e->w+(glance ? 4 : 0), e->h+(glance ? 4 : 0));
+        lv_obj_set_style_bg_color(s_pet.eye_covers[i],lv_color_hex(palette_skin_color(e->x-2,e->y+e->h/2)),0);
+        bool closed = s_pet.blink_stage == 2;
+        lv_obj_set_hidden(s_pet.eye_glances[i],!glance);
+        lv_obj_set_hidden(s_pet.eye_pupils[i], closed || glance);
+        lv_obj_set_hidden(s_pet.eye_lines[i], !closed);
+        if(glance) {
+            const lv_image_dsc_t *source=lv_img_get_src(s_pet.img);
+            lv_image_dsc_t *crop=&s_pet.eye_glance_images[i];
+            *crop=*source;
+            crop->header.w=e->w; crop->header.h=e->h;
+            crop->header.stride=e->w*4;
+            crop->header.flags|=LV_IMAGE_FLAGS_MODIFIABLE;
+            crop->data=s_pet.eye_glance_pixels[i];
+            crop->data_size=e->h*crop->header.stride;
+            for(int row=0;row<e->h;row++)
+                memcpy(s_pet.eye_glance_pixels[i]+row*crop->header.stride,
+                       source->data+(e->y+row)*source->header.stride+x*4,crop->header.stride);
+            lv_img_set_src(s_pet.eye_glances[i],crop);
+            lv_obj_set_pos(s_pet.eye_glances[i],2+s_pet.gaze_offset,2+s_pet.gaze_y);
+        }
+        else if(!closed) {
+            lv_obj_set_size(s_pet.eye_pupils[i], e->w - 4, LV_MAX(3, e->h / 3));
+            lv_obj_set_pos(s_pet.eye_pupils[i], 2, e->h / 2);
+        }
+        else {
+            for(unsigned j = 0; j < 5; j++) {
+                s_pet.eyelid_points[i][j].x = 2 + (e->w - 4) * j / 4;
+                s_pet.eyelid_points[i][j].y = e->h / 2 + (j == 2 ? 2 : (j == 0 || j == 4 ? 0 : 1));
+            }
+            lv_line_set_points(s_pet.eye_lines[i], s_pet.eyelid_points[i], 5);
+        }
+    }
+}
+
+static void refresh_side_portrait(void)
+{
+    if(!s_pet.side_portrait) return;
+    lv_obj_set_hidden(s_pet.wing,true);
+    lv_img_set_src(s_pet.img,pet_color_image(side_bodies[s_pet.eye_direction<0][s_pet.mouth_stage]));
+    s_pet.eyes=&side_body_eyes[s_pet.mouth_stage];
+    render_eyes();
+}
+
+static void blink_timer_cb(lv_timer_t *timer)
+{
+    (void)timer;
+    if(!s_pet.awake) return;
+    uint32_t elapsed = lv_tick_elaps(s_pet.blink_started);
+    if(!s_pet.blinking && elapsed >= s_pet.blink_wait) {
+        s_pet.blinking = true;
+        s_pet.blink_started = lv_tick_get();
+        elapsed = 0;
+    }
+    uint8_t stage = 0;
+    if(s_pet.blinking) {
+        stage = elapsed < 40 ? 1 : elapsed < 100 ? 2 : elapsed < 180 ? 1 : 0;
+        if(elapsed >= 180) {
+            s_pet.blinking = false;
+            s_pet.blink_started = lv_tick_get();
+            s_pet.blink_wait = lv_rand(2000, 5000);
+        }
+    }
+    if(stage != s_pet.blink_stage) {
+        s_pet.blink_stage = stage;
+        render_eyes();
+    }
+}
+
+static void show_frame(unsigned frame, int direction)
+{
+    lv_obj_set_hidden(s_pet.wing,true);
+    s_pet.front_flapping=false;
+    lv_obj_set_pos(s_pet.img,0,0);
+    lv_image_set_rotation(s_pet.img,0);
+    int shadow_width=frame==0 || frame==11 ? 76 : 54;
+    lv_obj_set_size(s_pet.shadow,shadow_width,8);
+    lv_obj_set_pos(s_pet.shadow,(192-shadow_width)/2,174);
+    s_pet.side_portrait=false;
+    for(unsigned foot = 0; foot < 2; foot++) lv_obj_set_hidden(s_pet.feet[foot], true);
+    lv_img_set_src(s_pet.img,pet_color_image( frames[direction < 0][frame]));
+    s_pet.front_base=(frame==0 || frame==3) ? pet_color_image(frames[direction<0][frame]) : NULL;
+    s_pet.front_seated=frame==0;
+    s_pet.eyes = &daily_eyes[frame];
+    s_pet.mouth = &daily_mouths[frame];
+    s_pet.eye_direction = direction;
+    render_eyes();
+    update_mouth_mask();
+}
+
+static void show_wing_frame(unsigned frame,int direction)
+{
+    s_pet.wing_frame=frame;
+    lv_obj_set_hidden(s_pet.wing,false);
+    lv_img_set_src(s_pet.wing,wing_frame_material(wing_animation[direction<0][frame]));
+    lv_obj_set_pos(s_pet.wing,direction<0 ? 109 : 19,74);
+    lv_image_set_pivot(s_pet.wing,direction<0 ? 9 : 54,34);
+    lv_image_set_rotation(s_pet.wing,0); /* The motion is drawn into each frame. */
+}
+
+static void show_walk(float distance, int direction)
+{
+    s_pet.front_flapping=false;
+    s_pet.front_base=NULL;
+    lv_obj_set_size(s_pet.shadow,38,8);
+    float support_x=walk_support_x(distance);
+    lv_obj_set_pos(s_pet.shadow,96+direction*(int)lroundf(support_x*0.5f)-19,174);
+    s_pet.side_portrait=true;
+    const lv_image_dsc_t *body=pet_color_image(side_bodies[direction<0][s_pet.mouth_stage]);
+    lv_img_set_src(s_pet.img,walk_expressive_body(body,distance,direction));
+    lv_obj_set_pos(s_pet.img,0,(int)lroundf(walk_body_y(distance)));
+    lv_image_set_pivot(s_pet.img,96,154);
+    lv_image_set_rotation(s_pet.img,(int)lroundf(direction*WALK_BODY_TILT*sinf(6.2831853f*distance/WALK_STRIDE_PX)));
+    lv_obj_invalidate(s_pet.img);
+    show_wing_frame(wing_walk_frame(distance),direction);
+    for(unsigned foot = 0; foot < 2; foot++) {
+        walk_foot_pose_t pose = walk_foot_pose(distance, foot);
+        s_pet.foot_poses[foot] = pose;
+        lv_obj_t *image = s_pet.feet[foot];
+        lv_obj_set_hidden(image, false);
+        lv_img_set_src(image, pet_color_image(foot_images[direction < 0][foot]));
+        int pivot_x = direction < 0 ? 30 : 18;
+        int ankle_x = 96 + (int)lroundf(pose.x);
+        if(direction < 0) ankle_x = 192 - ankle_x;
+        lv_obj_set_pos(image, ankle_x - pivot_x, 138 - (int)lroundf(pose.lift));
+        lv_image_set_pivot(image, pivot_x, 26);
+        lv_image_set_rotation(image, (int)lroundf(direction < 0 ? -pose.angle : pose.angle));
+    }
+    s_pet.eyes = &side_body_eyes[s_pet.mouth_stage];
+    s_pet.mouth = &rig_body_mouth;
+    s_pet.eye_direction = direction;
+    render_eyes();
+    update_mouth_mask();
+}
+
+static void show_sky_head(unsigned frame)
+{
+    if(frame==0) { show_frame(0,1); return; }
+    static const lv_image_dsc_t * const portraits[3]={&pet_sky_head_0,&pet_sky_head_1,&pet_sky_head_2};
+    lv_img_set_src(s_pet.img,portraits[frame-1]);
+    s_pet.eyes=&sky_head_eyes[frame-1];
+    s_pet.eye_direction=1;
+    s_pet.mouth=NULL;
+    render_eyes();
+    update_mouth_mask();
+}
+
+static void show_ground_head(unsigned frame)
+{
+    if(frame==0) { show_frame(0,1); return; }
+    static const lv_image_dsc_t * const portraits[3]={&pet_ground_head_0,&pet_ground_head_1,&pet_ground_head_2};
+    lv_img_set_src(s_pet.img,portraits[frame-1]);
+    s_pet.eyes=&ground_head_eyes[frame-1];
+    s_pet.eye_direction=1;
+    s_pet.mouth=NULL;
+    render_eyes();
+    update_mouth_mask();
+}
+
+static void show_rest_head(unsigned frame,int direction)
+{
+    if(s_pet.head_is_sky) { show_sky_head(frame); return; }
+    if(s_pet.head_is_ground) { show_ground_head(frame); return; }
+    if(frame==0) { show_frame(0,1); return; }
+    static const lv_image_dsc_t * const portraits[2][3]={
+        {&pet_rest_head_0_right,&pet_rest_head_1_right,&pet_rest_head_2_right},
+        {&pet_rest_head_0_left,&pet_rest_head_1_left,&pet_rest_head_2_left}
+    };
+    lv_img_set_src(s_pet.img,portraits[direction<0][frame-1]);
+    s_pet.eyes=&rest_head_eyes[frame-1];
+    s_pet.eye_direction=direction;
+    s_pet.mouth=NULL; /* Closed illustrated bill; no competing mouth overlay. */
+    render_eyes();
+    update_mouth_mask();
+}
+
+static void rest_head_tick(uint32_t elapsed)
+{
+    if(!s_pet.head_turning) {
+        if(elapsed<s_pet.head_wait || s_pet.calling || s_pet.front_flapping || s_pet.duration-elapsed<5000 ||
+           (s_pet.head_has_returned && lv_tick_elaps(s_pet.head_returned)<1200)) return;
+        s_pet.head_turning=true;
+        s_pet.head_started=elapsed;
+        s_pet.head_is_sky=s_pet.sky_chosen && !s_pet.sky_used;
+        s_pet.head_is_ground=!s_pet.head_is_sky && s_pet.ground_chosen && !s_pet.ground_used;
+        if(s_pet.head_is_sky) s_pet.sky_used=true;
+        if(s_pet.head_is_ground) s_pet.ground_used=true;
+        s_pet.head_hold=s_pet.head_is_sky ? lv_rand(1000,2000) : s_pet.head_is_ground ? lv_rand(700,1100) : lv_rand(900,2400);
+        s_pet.head_direction=lv_rand(0,1) ? 1 : -1;
+        s_pet.head_frame=0;
+    }
+    uint32_t t=elapsed-s_pet.head_started;
+    unsigned frame;
+    if(t<200) {
+        float u=LV_MIN(1.0f,t/100.0f);
+        int look=(int)lroundf(2*u*u*(3-2*u));
+        s_pet.gaze_offset=(s_pet.head_is_sky || s_pet.head_is_ground) ? 0 : s_pet.head_direction*look;
+        s_pet.gaze_y=s_pet.head_is_sky ? -look : s_pet.head_is_ground ? look : 0;
+        render_eyes();
+        return;
+    }
+    s_pet.gaze_offset=0;
+    s_pet.gaze_y=0;
+    if(t<320) frame=1;
+    else if(t<440) frame=2;
+    else if(t<600+s_pet.head_hold) frame=3;
+    else if(t<700+s_pet.head_hold) frame=2;
+    else if(t<880+s_pet.head_hold) frame=1;
+    else {
+        s_pet.head_turning=false;
+        s_pet.head_has_returned=true;
+        s_pet.head_returned=lv_tick_get();
+        s_pet.head_wait=elapsed+lv_rand(5000,9000);
+        frame=0;
+    }
+    if(frame!=s_pet.head_frame) {
+        s_pet.head_frame=frame;
+        show_rest_head(frame,s_pet.head_direction);
+    }
+}
+
+static void front_wing_tick(uint32_t elapsed)
+{
+    if(!s_pet.front_base) return;
+    if(!s_pet.front_flapping) {
+        if(!s_pet.front_flap_enabled || s_pet.front_flap_used || elapsed<s_pet.front_flap_wait ||
+           s_pet.head_turning || s_pet.calling || s_pet.duration-elapsed<2500 ||
+           (s_pet.head_has_returned && lv_tick_elaps(s_pet.head_returned)<1200)) return;
+        s_pet.front_flapping=true; s_pet.front_flap_used=true; s_pet.front_flap_started=elapsed;
+    }
+    uint32_t t=elapsed-s_pet.front_flap_started;
+    if(t>=WALK_CYCLE_MS) {
+        s_pet.front_flapping=false;
+        s_pet.head_has_returned=true; s_pet.head_returned=lv_tick_get();
+        lv_img_set_src(s_pet.img,s_pet.front_base);
+        render_eyes(); update_mouth_mask();
+        return;
+    }
+    unsigned frame=wing_walk_frame(t*(WALK_STRIDE_PX/(float)WALK_CYCLE_MS));
+    lv_img_set_src(s_pet.img,front_body_pose(s_pet.front_base,s_pet.front_seated,frame));
+    render_eyes(); update_mouth_mask();
+}
+
+static void enter_phase(daily_phase_t phase)
+{
+    s_pet.phase = phase;
+    s_pet.started = lv_tick_get();
+    s_pet.head_turning=false;
+    s_pet.gaze_offset=0;
+    s_pet.gaze_y=0;
+    s_pet.front_flapping=false; s_pet.front_flap_used=false;
+    s_pet.front_flap_enabled=(phase==REST || phase==STAND) && lv_rand(0,99)<35;
+    s_pet.front_flap_wait=phase==REST ? lv_rand(10000,18000) : lv_rand(1200,2000);
+    if(phase!=REST && phase!=STAND && phase!=PAUSE) {
+        s_pet.calling=false;
+        s_pet.mouth_stage=0;
+    }
+    switch(phase) {
+        case REST: {
+            s_pet.duration = lv_rand(24000, 45000);
+            s_pet.head_wait=lv_rand(4000,7000);
+            s_pet.head_has_returned=false;
+            s_pet.head_is_sky=false;
+            s_pet.head_is_ground=false;
+            unsigned observation=lv_rand(0,99);
+            s_pet.sky_chosen=observation<10;
+            s_pet.ground_chosen=observation>=10 && observation<30;
+            s_pet.sky_used=false;
+            s_pet.ground_used=false;
+            s_pet.will_walk=lv_rand(0,99)<70;
+            show_frame(0, 1);
+            break;
+        }
+        case RISE:
+            s_pet.duration = 600;
+            show_frame(1, 1);
+            break;
+        case STAND:
+            s_pet.duration = lv_rand(3000, 6000);
+            show_frame(3, 1);
+            break;
+        case LOOK:
+            s_pet.direction = lv_rand(0, 1) ? 1 : -1;
+            /* Whole half-cycles end on a grounded two-foot contact. */
+            s_pet.excursion = s_pet.direction * (int32_t)lv_rand(4, 5) * (WALK_STRIDE_PX / 2);
+            s_pet.duration = 540;
+            show_frame(4, s_pet.direction);
+            break;
+        case OUT:
+        case BACK:
+            s_pet.calling = false;
+            s_pet.mouth_stage = 0;
+            s_pet.from_x = s_pet.x;
+            s_pet.target_x = phase == OUT ? s_pet.excursion : 0;
+            s_pet.direction = s_pet.target_x > s_pet.from_x ? 1 : -1;
+            s_pet.duration = (uint32_t)LV_ABS(s_pet.target_x - s_pet.from_x) * WALK_CYCLE_MS / WALK_STRIDE_PX;
+            if(s_pet.duration == 0) s_pet.duration = 1;
+            s_pet.walk_pause=phase==OUT && LV_ABS(s_pet.target_x-s_pet.from_x)>=48 && lv_rand(0,99)<25;
+            s_pet.walk_pause_ms=s_pet.walk_pause ? lv_rand(600,1000) : 0;
+            s_pet.walk_checkpoint=WALK_STRIDE_PX;
+            s_pet.walk_first_ms=WALK_CYCLE_MS;
+            s_pet.duration+=s_pet.walk_pause_ms;
+            show_walk(0, s_pet.direction);
+            break;
+        case TURN:
+            s_pet.duration = 840;
+            show_frame(5, s_pet.direction);
+            break;
+        case SETTLE_OUT:
+        case SETTLE_BACK:
+            /* Preserve the final grounded pose before changing orientation. */
+            s_pet.duration = 180;
+            s_pet.wing_settle_start=s_pet.wing_frame;
+            break;
+        case FACE:
+            s_pet.duration = 540;
+            show_frame(5, s_pet.direction);
+            break;
+        case PAUSE:
+            s_pet.duration = lv_rand(1000, 2000);
+            show_frame(3, 1);
+            break;
+        case SIT:
+            s_pet.duration = 600;
+            show_frame(2, 1);
+            break;
+    }
+}
+
+static void update_tuft(void)
+{
+    if(!s_pet.awake || !s_pet.eyes || !s_pet.eyes->count) return;
+    float x=0,y=0;
+    for(unsigned i=0;i<s_pet.eyes->count;i++) {
+        const eye_region_t *eye=&s_pet.eyes->eyes[i];
+        float cx=eye->x+eye->w*0.5f;
+        x+=s_pet.eye_direction<0 ? 191-cx : cx;
+        y+=eye->y+eye->h*0.5f;
+    }
+    x/=s_pet.eyes->count;
+    y=y/s_pet.eyes->count+lv_obj_get_y(s_pet.img);
+    tuft_motion_step(&s_pet.tuft,lv_tick_get(),x,y);
+    const lv_image_dsc_t *source=lv_img_get_src(s_pet.img);
+    lv_img_set_src(s_pet.img,tuft_apply(source,s_pet.tuft.bend));
+    if(s_pet.tuft.bend!=0) lv_obj_invalidate(s_pet.img);
+}
+
+static void routine_timer_cb(lv_timer_t *timer)
+{
+    (void)timer;
+    uint32_t elapsed = lv_tick_elaps(s_pet.started);
+    uint32_t progress = LV_MIN(elapsed, s_pet.duration);
+    switch(s_pet.phase) {
+        case REST:
+            rest_head_tick(progress);
+            front_wing_tick(progress);
+            break;
+        case STAND:
+            front_wing_tick(progress);
+            break;
+        case SETTLE_OUT:
+        case SETTLE_BACK: {
+            show_wing_frame(wing_settle_frame(s_pet.wing_settle_start,progress),s_pet.direction);
+            break;
+        }
+        case RISE:
+            show_frame(progress < 200 ? 1 : progress < 400 ? 2 : 3, 1);
+            break;
+        case LOOK:
+            show_frame(progress < 180 ? 4 : 5, s_pet.direction);
+            break;
+        case OUT:
+        case BACK: {
+            float total=LV_ABS(s_pet.target_x-s_pet.from_x);
+            float travel;
+            if(!s_pet.walk_pause) travel=walk_travel(progress,s_pet.duration,total);
+            else if(progress<s_pet.walk_first_ms)
+                travel=walk_travel(progress,s_pet.walk_first_ms,s_pet.walk_checkpoint);
+            else if(progress<s_pet.walk_first_ms+s_pet.walk_pause_ms)
+                travel=s_pet.walk_checkpoint;
+            else {
+                uint32_t after=progress-s_pet.walk_first_ms-s_pet.walk_pause_ms;
+                travel=s_pet.walk_checkpoint+walk_travel(after,s_pet.duration-s_pet.walk_first_ms-s_pet.walk_pause_ms,total-s_pet.walk_checkpoint);
+            }
+            s_pet.x = s_pet.from_x + s_pet.direction * (int32_t)lroundf(travel);
+            lv_obj_set_style_translate_x(s_pet.pet, s_pet.x, 0);
+            show_walk(travel, s_pet.direction);
+            break;
+        }
+        case TURN:
+            if(progress < 140) show_frame(5, s_pet.direction);
+            else if(progress < 280) show_frame(4, s_pet.direction);
+            else if(progress < 560) show_frame(3, 1);
+            else if(progress < 700) show_frame(4, -s_pet.direction);
+            else show_frame(5, -s_pet.direction);
+            break;
+        case FACE:
+            show_frame(progress < 180 ? 5 : progress < 360 ? 4 : 3, s_pet.direction);
+            break;
+        case SIT:
+            show_frame(progress < 200 ? 2 : progress < 400 ? 1 : 0, 1);
+            break;
+        default: break;
+    }
+    if(elapsed >= s_pet.duration) {
+        daily_phase_t next=s_pet.phase==SIT ? REST : s_pet.phase+1;
+        if(s_pet.phase==STAND && !s_pet.will_walk) next=SIT;
+        enter_phase(next);
+    }
+    update_tuft();
 }
 
 void pet_set_state(pet_state_t state)
 {
     if(s_pet.pet == NULL || s_pet.img == NULL) return;
-
-    lv_anim_del(s_pet.pet, y_anim_cb);
-    lv_anim_del(s_pet.pet, translate_x_anim_cb);
-    lv_obj_set_style_translate_x(s_pet.pet, 0, 0);
-    lv_obj_set_style_transform_scale_y(s_pet.img, 256, 0);
-    s_pet.state = state;
-
-    if(s_pet.heartbeat_timer != NULL && s_pet.blink_timer != NULL) {
-        if(state == PET_STATE_HUNGRY || state == PET_STATE_SLEEP) {
-            lv_timer_pause(s_pet.heartbeat_timer);
-            lv_timer_pause(s_pet.blink_timer);
-        }
-        else {
-            lv_timer_resume(s_pet.heartbeat_timer);
-            lv_timer_resume(s_pet.blink_timer);
-        }
-    }
-
+    lv_obj_set_hidden(s_pet.wing,true);
+    s_pet.front_flapping=false;
+    lv_obj_set_pos(s_pet.img,0,0);
+    lv_image_set_rotation(s_pet.img,0);
+    lv_timer_pause(s_pet.timer);
+    memset(&s_pet.tuft,0,sizeof(s_pet.tuft));
+    s_pet.side_portrait=false;
+    s_pet.head_turning=false;
+    s_pet.gaze_offset=0;
+    s_pet.gaze_y=0;
+    s_pet.calling = false;
+    s_pet.mouth_stage = 0;
+    s_pet.mouth = NULL;
+    for(unsigned foot = 0; foot < 2; foot++) lv_obj_set_hidden(s_pet.feet[foot], true);
+    s_pet.awake = state != PET_STATE_SLEEP;
     switch(state) {
-        case PET_STATE_WALK:
-            s_pet.walk_frame = 0;
-            lv_img_set_src(s_pet.img, walk_frames[s_pet.walk_frame]);
-            lv_timer_resume(s_pet.walk_frame_timer);
-            start_loop_anim(s_pet.pet, y_anim_cb, 0, -8, 180, lv_anim_path_ease_in_out);
-            start_loop_anim(s_pet.pet, translate_x_anim_cb, -52, 52, 1800, lv_anim_path_ease_in_out);
-            break;
         case PET_STATE_HUNGRY:
-            lv_timer_pause(s_pet.walk_frame_timer);
-            lv_img_set_src(s_pet.img, &pet_chick_hungry);
-            start_loop_anim(s_pet.pet, y_anim_cb, 0, 7, 950, lv_anim_path_ease_in_out);
+            lv_img_set_src(s_pet.img,pet_color_image( &pet_chick_hungry));
+            s_pet.eyes = &hungry_eyes;
+            s_pet.mouth = NULL;
+            s_pet.eye_direction = 1;
+            render_eyes();
             break;
         case PET_STATE_SLEEP:
-            lv_timer_pause(s_pet.walk_frame_timer);
-            lv_img_set_src(s_pet.img, &pet_chick_sleep);
-            start_loop_anim(s_pet.pet, y_anim_cb, 0, -5, 1300, lv_anim_path_ease_in_out);
+            lv_img_set_src(s_pet.img,pet_color_image( &pet_chick_sleep));
+            s_pet.blinking = false;
+            s_pet.blink_stage = 0;
+            s_pet.calling = false;
+            s_pet.mouth_stage = 0;
+            s_pet.mouth = NULL;
+            render_eyes();
             break;
-        case PET_STATE_HAPPY:
-            lv_timer_pause(s_pet.walk_frame_timer);
-            lv_img_set_src(s_pet.img, &pet_chick_192);
-            start_loop_anim(s_pet.pet, y_anim_cb, 0, -10, 450, lv_anim_path_ease_in_out);
+        case PET_STATE_WALK:
+            enter_phase(LOOK);
+            lv_timer_resume(s_pet.timer);
             break;
         case PET_STATE_IDLE:
         default:
-            lv_timer_pause(s_pet.walk_frame_timer);
-            lv_img_set_src(s_pet.img, &pet_chick_192);
-            start_loop_anim(s_pet.pet, y_anim_cb, 0, -12, 1200, lv_anim_path_ease_in_out);
+            /* Resume from the current location without teleporting. */
+            enter_phase(s_pet.x == 0 ? REST : BACK);
+            lv_timer_resume(s_pet.timer);
             break;
     }
+    update_mouth_mask();
 }
 
-/* ---- 入口 ---- */
 void pet_create(lv_obj_t *parent, lv_coord_t w, lv_coord_t h)
 {
-    (void)w;
-    (void)h;
+    lv_obj_set_scrollable(parent, false);
+    scene_create_background(parent,w,h);
 
-    /* 背景：深蓝渐变，营造手表屏夜间氛围 */
-    lv_obj_set_style_bg_color(parent, lv_color_hex(0x1B2440), 0);
-    lv_obj_set_style_bg_grad_color(parent, lv_color_hex(0x0F1526), 0);
-    lv_obj_set_style_bg_grad_dir(parent, LV_GRAD_DIR_VER, 0);
-
-    /* 宠物主体容器：192×192，适配 410×502 AMOLED 显示区。 */
     lv_obj_t *pet = lv_obj_create(parent);
-    lv_obj_set_size(pet, PET_SPRITE_SIZE, PET_SPRITE_SIZE);
-    lv_obj_align(pet, LV_ALIGN_CENTER, 0, -20);
-    lv_obj_set_style_border_width(pet, 0, 0);
-    lv_obj_set_style_bg_opa(pet, LV_OPA_TRANSP, 0);
-    /* 宠物容器只负责布局和动画，禁用默认可滚动行为，避免缩放时出现滚动条。 */
+    lv_obj_remove_style_all(pet);
+    lv_obj_set_size(pet, 192, 192);
+    lv_obj_align(pet, LV_ALIGN_CENTER, 0, 50);
+    lv_obj_set_clickable(pet, false);
     lv_obj_set_scrollable(pet, false);
-    lv_obj_set_scrollbar_mode(pet, LV_SCROLLBAR_MODE_OFF);
-    /* 缩放/压缩旋转中心设为容器中心 */
-    lv_obj_set_style_transform_pivot_x(pet, PET_SPRITE_PIVOT, 0);
-    lv_obj_set_style_transform_pivot_y(pet, PET_SPRITE_PIVOT, 0);
-
-    /* 小黄鸡贴图 */
+    s_pet.shadow=lv_obj_create(pet);
+    lv_obj_remove_style_all(s_pet.shadow);
+    lv_obj_set_style_radius(s_pet.shadow,LV_RADIUS_CIRCLE,0);
+    lv_obj_set_style_bg_color(s_pet.shadow,lv_color_hex(0x486E32),0);
+    lv_obj_set_style_bg_opa(s_pet.shadow,22,0);
+    lv_obj_set_style_shadow_color(s_pet.shadow,lv_color_hex(0x486E32),0);
+    lv_obj_set_style_shadow_width(s_pet.shadow,12,0);
+    lv_obj_set_style_shadow_opa(s_pet.shadow,12,0);
+    lv_obj_set_clickable(s_pet.shadow,false);
+    lv_obj_set_scrollable(s_pet.shadow,false);
+    /* Far foot behind near foot, both beneath the unchanged body artwork. */
+    for(int foot = 1; foot >= 0; foot--) {
+        s_pet.feet[foot] = lv_img_create(pet);
+        lv_img_set_src(s_pet.feet[foot], pet_color_image(foot_images[0][foot]));
+        lv_obj_set_clickable(s_pet.feet[foot], false);
+        lv_obj_set_scrollable(s_pet.feet[foot], false);
+    }
     lv_obj_t *img = lv_img_create(pet);
-    lv_img_set_src(img, &pet_chick_192);
+    lv_img_set_src(img, pet_color_image(frames[0][0]));
+    lv_obj_set_size(img,192,192); /* Transparent wing child bounds must not move the torso. */
     lv_obj_align(img, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_transform_pivot_x(img, PET_SPRITE_PIVOT, 0);
-    lv_obj_set_style_transform_pivot_y(img, PET_SPRITE_PIVOT, 0);
-    /* 可点击，触发开心弹跳 */
-    lv_obj_set_clickable(img, true);
-    lv_obj_add_event_cb(img, pet_click_cb, LV_EVENT_CLICKED, pet);
+    lv_obj_set_clickable(img, false);
+    lv_obj_add_event_cb(pet, mouth_draw_cb, LV_EVENT_DRAW_POST_END, NULL);
+    s_pet.wing=lv_img_create(img);
+    lv_img_set_src(s_pet.wing,wing_animation[0][0]);
+    lv_obj_set_clickable(s_pet.wing,false);
+    lv_obj_set_scrollable(s_pet.wing,false);
+    lv_obj_set_hidden(s_pet.wing,true);
+
+    for(unsigned i = 0; i < 2; i++) {
+        lv_obj_t *cover = lv_obj_create(img);
+        lv_obj_remove_style_all(cover);
+        lv_obj_set_style_bg_opa(cover, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(cover, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_clickable(cover, false);
+        lv_obj_set_scrollable(cover, false);
+        s_pet.eye_covers[i] = cover;
+        lv_obj_t *pupil = lv_obj_create(cover);
+        lv_obj_remove_style_all(pupil);
+        lv_obj_set_style_bg_color(pupil, lv_color_hex(0x382113), 0);
+        lv_obj_set_style_bg_opa(pupil, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(pupil, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_clickable(pupil, false);
+        s_pet.eye_pupils[i] = pupil;
+        lv_obj_t *line = lv_line_create(cover);
+        lv_obj_set_pos(line, 0, 0);
+        lv_obj_set_style_line_color(line, lv_color_hex(0x382113), 0);
+        lv_obj_set_style_line_width(line, 2, 0);
+        lv_obj_set_style_line_rounded(line, true, 0);
+        lv_obj_set_clickable(line, false);
+        s_pet.eye_lines[i] = line;
+        s_pet.eye_glances[i]=lv_img_create(cover);
+        lv_obj_set_clickable(s_pet.eye_glances[i],false);
+        lv_obj_set_scrollable(s_pet.eye_glances[i],false);
+        lv_obj_set_hidden(s_pet.eye_glances[i],true);
+    }
 
     s_pet.pet = pet;
     s_pet.img = img;
-    s_pet.walk_frame = 0;
-    s_pet.walk_frame_timer = lv_timer_create(walk_frame_timer_cb, 150, &s_pet);
-    lv_timer_pause(s_pet.walk_frame_timer);
-    lv_timer_create(routine_timer_cb, 5000, NULL);
-
-    /* ---- 状态共用动画 ---- */
-
-    /* 1. 呼吸动画：主体缩放 100% ↔ 105%，3s 周期，无限循环双向播放 */
-    start_loop_anim(pet, scale_anim_cb, 256, 269, 1500, lv_anim_path_ease_in_out);
-
-    /* 2. 初始待机：微动，之后按 待机→走路→饥饿→睡觉 自动轮换。 */
+    s_pet.x = 0;
+    s_pet.timer = lv_timer_create(routine_timer_cb, 20, NULL);
+    s_pet.blink_started = lv_tick_get();
+    s_pet.blink_wait = lv_rand(2000, 5000);
+    s_pet.blink_stage = 0;
+    s_pet.blinking = false;
+    s_pet.blink_timer = lv_timer_create(blink_timer_cb, 20, NULL);
+    s_pet.mouth_started = lv_tick_get();
+    s_pet.mouth_wait = lv_rand(20000, 40000);
+    s_pet.mouth_stage = 0;
+    s_pet.calling = false;
+    s_pet.mouth_timer = lv_timer_create(mouth_timer_cb, 20, NULL);
     pet_set_state(PET_STATE_IDLE);
-
-    /* 3. 心跳：定时脉冲（1.4s 一次） */
-    s_pet.heartbeat_timer = lv_timer_create(heartbeat_timer_cb, 1400, img);
-
-    /* 4. 眨眼：随机间隔（1.8s~4.2s） */
-    s_pet.blink_timer = lv_timer_create(blink_timer_cb, lv_rand(1800, 4200), img);
+    scene_create_foreground(parent);
 }
