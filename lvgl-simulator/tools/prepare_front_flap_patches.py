@@ -1,12 +1,13 @@
 """Pack original-sized frontal wing regions; original face/feet stay in runtime."""
 from pathlib import Path
+import sys
 import re
 from PIL import Image
 from prepare_state_sprites import clean_alpha,keep_largest_component
 from prepare_blink_geometry import geometry
 from generate_lvgl_argb8888 import write_c_image
 ROOT=Path(__file__).resolve().parents[2]
-sheet=Image.open(ROOT/'assets/chick_character_design_pack/front_flap_source_v3.png').convert('RGBA')
+sheet=Image.open(Path(sys.argv[1]) if len(sys.argv)>1 else ROOT/'assets/chick_character_design_pack/front_flap_source_v3.png').convert('RGBA')
 folder=ROOT/'assets/runtime/chick/front_flap_patches'; folder.mkdir(parents=True,exist_ok=True)
 cells=[]
 for i in range(6):

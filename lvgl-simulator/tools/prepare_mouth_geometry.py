@@ -19,6 +19,11 @@ def geometry(path, pose):
     im = Image.open(path).convert('RGBA')
     p = im.load()
     x0,y0,x1,y1,cx,cy,mode = pose
+    # Soft-material atlas retains poses but may widen the drawn bill slightly.
+    # Locate its complete silhouette instead of clipping it to legacy bounds.
+    if mode!=2:
+        x0=max(0,x0-8); x1=min(192,x1+8)
+        y0=max(0,y0-8); y1=min(191,y1+8)
     candidates = {(x,y) for y in range(y0,y1) for x in range(x0,x1)
                   if (lambda c:c[3]>128 and c[0]>80 and c[1]<180 and c[2]<100)(p[x,y])}
     parts = []
@@ -33,6 +38,13 @@ def geometry(path, pose):
         if len(part)>20: parts.append(part)
     if not parts: return '{ 0 }'
     part = max(parts,key=len)
+    if mode!=2:
+        bx0,bx1=min(x for x,y in part),max(x for x,y in part)
+        by0,by1=min(y for x,y in part),max(y for x,y in part)
+        x0,x1=max(0,bx0-2),min(192,bx1+3)
+        y0,y1=max(0,by0-2),min(191,by1+3)
+        cx=round((bx0+bx1)/2)
+        cy=by0+5
     # Include the old beak's anti-aliased fringe, avoiding lingering orange dots.
     expanded = {(x+dx,y+dy) for x,y in part for dx in (-1,0,1) for dy in (-1,0,1)
                 if x0<=x+dx<x1 and y0<=y+dy<y1}

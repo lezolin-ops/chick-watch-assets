@@ -1,0 +1,17 @@
+{
+  "mode": "built-in image_gen",
+  "assets": [
+    {
+      "name": "daily_eyes",
+      "prompt": "Use case: precise-object-edit. Edit image1 only, exact same 4x3 sprite atlas. Change ONLY interior of every visible eye: preserve existing dark brown-black oval and white main upper glint. Add a tiny subdued warm-brown circular secondary reflection at lower-left inside EACH eye, around 12% of eye width, clearly present but subtle, consistent with image2 chick eyes. Do not change body, beaks, legs, wings, tuft, poses, geometry, yellow tones or opacity silhouettes. No eyelashes, glitter or extra white reflections. Preserve genuine transparent background. Critical all 12 cells' eyes updated, including profile one-eye poses."
+    },
+    {
+      "name": "side_body_clean",
+      "prompt": "Use case: precise-object-edit. Image1 is target 3-column side-body atlas. KEEP exact three chick bodies, closed/half/open beaks, original warm yellow colours, silhouette, rump outer contour, face, eyes, tuft, proportions and layout. Remove ONLY the internal baked-in wing lobes and their shadow/crease on the left-middle interior of each body. Fill that interior smoothly with continuous nearby warm-yellow body material. This will receive a separate animated wing overlay. Do NOT remove/change rump silhouette or add body notches; no new legs, no tail motion, no outline, no pale patch, no straight fill seam. All three bodies identical except beak opening. Keep actual transparent background. Body shadow broad and soft, not outlined."
+    },
+    {
+      "name": "wing_fixed",
+      "prompt": "Use case: precise-object-edit. Image1 is edit target: EXACT SAME 6 columns x 4 rows wing-only atlas. Image2 supplies warm-YELLOW wing surface colour only; do not copy the bird. Remove the pale thin perimeter/rim highlight of every wing, especially across upper edge/shoulder, and use image2 body warm saturated yellow (approx RGB255,215,50) for main wing surface. There must be NO white/cream rim line, NO hard orange outline, no rim light. Keep subtle warm-orange underside shadows and clean rounded silhouette, every pose/cell shape/layout exactly unchanged. Same lighting direction and colour all cells. Actual transparent background; no glow or cast shadow. DO NOT add any bodies, eyes, beaks or legs, only the existing 24 wing parts."
+    }
+  ]
+}

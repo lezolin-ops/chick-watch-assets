@@ -17,6 +17,32 @@ static unsigned alpha_at(const lv_image_dsc_t *image, int x, int y)
     return image->data[y * image->header.stride + x * 4 + 3];
 }
 
+static void verify_cloud_art(void)
+{
+    const lv_image_dsc_t *clouds[2]={&pet_scene_cloud_near,&pet_scene_cloud_far};
+    assert(clouds[0]->header.w>clouds[1]->header.w*1.8f);
+    for(unsigned n=0;n<2;n++) {
+        const lv_image_dsc_t *cloud=clouds[n];
+        unsigned opaque=0,soft=0,white=0,blue=0;
+        for(unsigned i=0;i<cloud->data_size;i+=4) {
+            const uint8_t *p=cloud->data+i;
+            if(p[3]>220) {
+                opaque++;
+                if(p[2]>240 && p[1]>240) white++;
+                if(p[0]>p[2]+10 && p[0]>230) blue++;
+            }
+            if(p[3]>10 && p[3]<220) soft++;
+        }
+        assert(opaque>100 && soft>10 && white>30 && blue>30);
+        assert(alpha_at(cloud,0,0)==0 && alpha_at(cloud,cloud->header.w-1,0)==0);
+        assert(scene_cloud_x(0,n)>=0 && scene_cloud_x(0,n)+cloud->header.w<=410);
+        uint32_t wrap=PET_CLOUD_PERIOD_MS-cloud_phase_offset[n];
+        assert(scene_cloud_x(wrap-1,n)>410 && scene_cloud_x(wrap,n)==-160);
+        assert(scene_cloud_x(1000,n)>scene_cloud_x(0,n));
+    }
+    puts("PASS: distinct painted near/far clouds, milk-white/blue shading, soft alpha, complete initial layout and offscreen wrapping.");
+}
+
 static void verify_attachment(void)
 {
     unsigned minimum = 100000;
@@ -136,8 +162,10 @@ int main(void)
 {
     pet_scene.width=410;
     assert(scene_cloud_x(0,0)==scene_cloud_x(PET_CLOUD_PERIOD_MS,0));
-    assert(scene_cloud_x(2699999,0)>410);
-    assert(scene_cloud_x(2700000,0)==-160);
+    uint32_t cloud_wrap=PET_CLOUD_PERIOD_MS-cloud_phase_offset[0];
+    assert(scene_cloud_x(cloud_wrap-1,0)>410);
+    assert(scene_cloud_x(cloud_wrap,0)==-160);
+    verify_cloud_art();
     assert(scene_wind_wave(0,1000)==0 && scene_wind_wave(5000,1000)==0);
     assert(fabsf(scene_wind_wave(2250,1000))<fabsf(scene_wind_wave(250,1000)));
     double means[2][3]={{0}};
@@ -160,9 +188,17 @@ int main(void)
         }
         for(unsigned c=0;c<3;c++) means[n][c]/=count;
     }
-    /* Independently painted poses may differ slightly, not become pale white. */
-    for(unsigned c=0;c<3;c++) assert(fabs(means[0][c]-means[1][c])<10.0);
-    printf("PASS: original ungraded artwork; body means front %.1f/%.1f/%.1f, side %.1f/%.1f/%.1f; one-hour clouds and damped wind.\n",means[0][0],means[0][1],means[0][2],means[1][0],means[1][1],means[1][2]);
+    /* Side is the material authority: reject the old amber front palette.
+     * Allow soft shading, but not a different hue or visibly pale saturation. */
+    for(unsigned c=0;c<3;c++) assert(fabs(means[0][c]-means[1][c])<7.0);
+    double hue[2],saturation[2];
+    for(unsigned n=0;n<2;n++) {
+        hue[n]=60*(means[n][1]-means[n][2])/(means[n][0]-means[n][2]);
+        saturation[n]=(means[n][0]-means[n][2])/means[n][0];
+    }
+    assert(fabs(hue[0]-hue[1])<0.8);
+    assert(fabs(saturation[0]-saturation[1])<0.035);
+    printf("PASS: unified ungraded artwork; body means front %.1f/%.1f/%.1f, side %.1f/%.1f/%.1f; configured cloud period and damped wind.\n",means[0][0],means[0][1],means[0][2],means[1][0],means[1][1],means[1][2]);
     verify_gait();
     verify_attachment();
     lv_init();
@@ -342,7 +378,12 @@ int main(void)
             save_preview(display,path);
         }
         assert(s_pet.front_flap_used && !s_pet.front_flapping);
-        assert(lv_img_get_src(s_pet.img)==s_pet.front_base);
+        /* The current idle tuft drive may wrap the returned base in a warp. */
+        const lv_image_dsc_t *folded=lv_img_get_src(s_pet.img);
+        unsigned base_y=tuft_base_y(s_pet.front_base);
+        assert(memcmp(folded->data+base_y*folded->header.stride,
+                      s_pet.front_base->data+base_y*s_pet.front_base->header.stride,
+                      folded->data_size-base_y*folded->header.stride)==0);
     }
     puts("PASS: front seated/standing flap preserves centre/feet, fixed roots, one burst, returns to original art.");
 
@@ -497,15 +538,15 @@ int main(void)
     lv_tick_inc(s_pet.duration); routine_timer_cb(NULL);
     assert(s_pet.phase==SIT && s_pet.x==0);
     lv_tick_inc(s_pet.duration); routine_timer_cb(NULL);
-    assert(s_pet.phase==REST && s_pet.duration>=24000 && s_pet.duration<=45000);
+    assert(s_pet.phase==REST && s_pet.duration>=12000 && s_pet.duration<=20000);
     enter_phase(STAND);
     s_pet.will_walk=true;
     lv_tick_inc(s_pet.duration); routine_timer_cb(NULL);
     assert(s_pet.phase==LOOK);
     pet_set_state(PET_STATE_WALK);
     assert(s_pet.phase==LOOK);
-    assert(s_pet.mouth_wait>=20000 && s_pet.mouth_wait<=40000);
-    puts("PASS: stand/sit and walk branches; head-return quiet beat; 20–40s beak interval.");
+    assert(s_pet.mouth_wait>=10000 && s_pet.mouth_wait<=20000);
+    puts("PASS: stand/sit and walk branches; head-return quiet beat; current 10–20s beak interval.");
 
     s_pet.x=0;
     s_pet.will_walk=false;

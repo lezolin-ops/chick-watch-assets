@@ -24,6 +24,7 @@
 
 #include "hal/hal.h"
 #include "pet.h"
+#include "lottie_demo.h"
 
 /*********************
  *      DEFINES
@@ -62,8 +63,10 @@ int main(int argc, char **argv)
   /*Initialize the HAL (display, input devices, tick) for LVGL*/
   sdl_hal_init(410, 502);
 
-  /* 启动电子宠物主界面（P0 动画） */
+  /* 启动电子宠物主界面（清醒日常循环 + 触摸开心） */
   pet_create(lv_screen_active(), 410, 502);
+  /* Lottie 演示版（lv_lottie + ThorVG）备用：改调 lottie_demo_create 即可切换 */
+  //lottie_demo_create(lv_screen_active(), 410, 502);
 
   while(1) {
     /* Periodically call the lv_task handler.

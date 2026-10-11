@@ -82,6 +82,8 @@ typedef struct {
     tuft_motion_t tuft;
     uint32_t walk_pause_ms,walk_first_ms;
     float walk_checkpoint;
+    bool happy;
+    uint32_t happy_started;
 } pet_runtime_t;
 
 static pet_runtime_t s_pet;
@@ -221,7 +223,7 @@ static void mouth_timer_cb(lv_timer_t *timer)
         if(elapsed >= 400) {
             s_pet.calling = false;
             s_pet.mouth_started = lv_tick_get();
-            s_pet.mouth_wait = lv_rand(20000, 40000);
+            s_pet.mouth_wait = lv_rand(10000, 20000);   /* 轻叫 10~20s（原 20~40s） */
         }
     }
     if(stage != s_pet.mouth_stage) {
@@ -420,7 +422,8 @@ static void show_rest_head(unsigned frame,int direction)
 static void rest_head_tick(uint32_t elapsed)
 {
     if(!s_pet.head_turning) {
-        if(elapsed<s_pet.head_wait || s_pet.calling || s_pet.front_flapping || s_pet.duration-elapsed<5000 ||
+        if(elapsed<s_pet.head_wait || s_pet.calling || s_pet.front_flapping ||
+           s_pet.duration-elapsed<3000 ||
            (s_pet.head_has_returned && lv_tick_elaps(s_pet.head_returned)<1200)) return;
         s_pet.head_turning=true;
         s_pet.head_started=elapsed;
@@ -453,7 +456,7 @@ static void rest_head_tick(uint32_t elapsed)
         s_pet.head_turning=false;
         s_pet.head_has_returned=true;
         s_pet.head_returned=lv_tick_get();
-        s_pet.head_wait=elapsed+lv_rand(5000,9000);
+        s_pet.head_wait=elapsed+lv_rand(3000,6000);   /* 转头回正后 3~6s 再转（原 5~9s） */
         frame=0;
     }
     if(frame!=s_pet.head_frame) {
@@ -500,8 +503,8 @@ static void enter_phase(daily_phase_t phase)
     }
     switch(phase) {
         case REST: {
-            s_pet.duration = lv_rand(24000, 45000);
-            s_pet.head_wait=lv_rand(4000,7000);
+            s_pet.duration = lv_rand(12000, 20000);   /* 窝坐 12~20s（原 24~45s） */
+            s_pet.head_wait=lv_rand(2500,4500);       /* 首次转头等待 2.5~4.5s（原 4~7s） */
             s_pet.head_has_returned=false;
             s_pet.head_is_sky=false;
             s_pet.head_is_ground=false;
@@ -583,15 +586,66 @@ static void update_tuft(void)
     x/=s_pet.eyes->count;
     y=y/s_pet.eyes->count+lv_obj_get_y(s_pet.img);
     tuft_motion_step(&s_pet.tuft,lv_tick_get(),x,y);
+    /* ---- 呆毛动感增强：呼吸微摆 + 蹦跳甩动 + 随机一阵风 ---- */
+    static uint32_t wind_next=0, wind_started=0;
+    static int wind_dir=1;
+    uint32_t now=lv_tick_get();
+    if(now>=wind_next) { wind_started=now; wind_next=now+lv_rand(8000,15000); wind_dir=lv_rand(0,1)?1:-1; }
+    float drive=0;
+    /* 呼吸：3.2s 周期，呆毛随呼吸轻轻前后摆 */
+    drive += 0.30f * sinf(6.2831853f * (now%3200) / 3200.0f);
+    /* 蹦跳开心：呆毛大幅甩动 */
+    if(s_pet.happy) drive += 1.1f * sinf(6.2831853f * (now%600) / 600.0f);
+    /* 随机一阵风：900ms 正弦包络吹歪再弹回 */
+    uint32_t wind_t=now-wind_started;
+    if(wind_t<900) drive += wind_dir * 1.6f * sinf(3.1415927f * wind_t / 900.0f);
+    if(drive!=0) {
+        s_pet.tuft.bend=fmaxf(-2.4f,fminf(2.4f,s_pet.tuft.bend+drive));
+        s_pet.tuft.velocity*=0.5f; /* 外力后衰减速度，让弹簧回弹自然 */
+    }
     const lv_image_dsc_t *source=lv_img_get_src(s_pet.img);
     lv_img_set_src(s_pet.img,tuft_apply(source,s_pet.tuft.bend));
     if(s_pet.tuft.bend!=0) lv_obj_invalidate(s_pet.img);
+}
+
+static void happy_tick(uint32_t elapsed)
+{
+    (void)elapsed;
+    uint32_t t = lv_tick_elaps(s_pet.happy_started);
+    /* 蹦跳：每 600ms 一跳，抛物线高度 20px */
+    uint32_t hop = t % 600;
+    float u = hop < 300 ? hop / 300.0f : (600 - hop) / 300.0f;
+    int dy = -(int)(20.0f * u * u * u);
+    lv_obj_set_style_translate_y(s_pet.pet, dy, 0);
+    /* 扇翅：每 700ms 一轮完整挥翅（身体贴图内嵌翅膀） */
+    if(!s_pet.front_base) { show_frame(0, 1); s_pet.front_base = pet_color_image(frames[0][0]); s_pet.front_seated = true; }
+    uint32_t wf_t = t % 700;
+    unsigned frame = wing_walk_frame(wf_t * (WALK_STRIDE_PX / 700.0f));
+    lv_img_set_src(s_pet.img, front_body_pose(s_pet.front_base, s_pet.front_seated, frame));
+    render_eyes(); update_mouth_mask();
+    if(t >= 1500) {
+        s_pet.happy = false;
+        lv_obj_set_style_translate_y(s_pet.pet, 0, 0);
+        enter_phase(s_pet.phase); /* 从当前相位重新开始，不跳状态机 */
+    }
+}
+
+static void pet_click_cb(lv_event_t *event)
+{
+    (void)event;
+    if(!s_pet.awake) return;          /* 睡觉不理会 */
+    if(s_pet.happy) return;           /* 正在开心，忽略连点 */
+    s_pet.happy = true;
+    s_pet.happy_started = lv_tick_get();
+    s_pet.front_flapping = false;
+    s_pet.front_base = NULL;
 }
 
 static void routine_timer_cb(lv_timer_t *timer)
 {
     (void)timer;
     uint32_t elapsed = lv_tick_elaps(s_pet.started);
+    if(s_pet.happy) { happy_tick(elapsed); update_tuft(); return; }
     uint32_t progress = LV_MIN(elapsed, s_pet.duration);
     switch(s_pet.phase) {
         case REST:
@@ -711,8 +765,9 @@ void pet_create(lv_obj_t *parent, lv_coord_t w, lv_coord_t h)
     lv_obj_remove_style_all(pet);
     lv_obj_set_size(pet, 192, 192);
     lv_obj_align(pet, LV_ALIGN_CENTER, 0, 50);
-    lv_obj_set_clickable(pet, false);
+    lv_obj_set_clickable(pet, true);
     lv_obj_set_scrollable(pet, false);
+    lv_obj_add_event_cb(pet, pet_click_cb, LV_EVENT_CLICKED, NULL);
     s_pet.shadow=lv_obj_create(pet);
     lv_obj_remove_style_all(s_pet.shadow);
     lv_obj_set_style_radius(s_pet.shadow,LV_RADIUS_CIRCLE,0);
@@ -780,7 +835,7 @@ void pet_create(lv_obj_t *parent, lv_coord_t w, lv_coord_t h)
     s_pet.blinking = false;
     s_pet.blink_timer = lv_timer_create(blink_timer_cb, 20, NULL);
     s_pet.mouth_started = lv_tick_get();
-    s_pet.mouth_wait = lv_rand(20000, 40000);
+    s_pet.mouth_wait = lv_rand(10000, 20000);   /* 轻叫 10~20s（原 20~40s） */
     s_pet.mouth_stage = 0;
     s_pet.calling = false;
     s_pet.mouth_timer = lv_timer_create(mouth_timer_cb, 20, NULL);

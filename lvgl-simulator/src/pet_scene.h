@@ -1,11 +1,17 @@
-/* Independent atmospheric layers: one-hour clouds and passing, damped gusts. */
+/* Independent painted clouds and passing, damped gusts. */
 #ifndef PET_SCENE_H
 #define PET_SCENE_H
 #include "pet_scene_assets.c"
+#include "pet_cloud_assets.c"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
-#define PET_CLOUD_PERIOD_MS 3600000U
+#define PET_CLOUD_PERIOD_MS 480000U   /* 云 8 分钟一圈（原 1 小时） */
+/* Start both clouds in view; each still travels left-to-right at the old speed. */
+static const uint32_t cloud_phase_offset[2]={
+    (uint32_t)((uint64_t)PET_CLOUD_PERIOD_MS*184/730),
+    (uint32_t)((uint64_t)PET_CLOUD_PERIOD_MS*470/730)
+};
 static struct {
     lv_obj_t *clouds[2], *grass[2], *flowers[2];
     lv_timer_t *cloud_timer,*wind_timer;
@@ -38,16 +44,16 @@ static void scene_bend_plant(unsigned layer,unsigned half,int bend)
     lv_obj_invalidate(layer==0 ? pet_scene.grass[half] : pet_scene.flowers[half]);
 }
 
-static int scene_cloud_x(uint32_t elapsed,unsigned cloud)
+static float scene_cloud_x(uint32_t elapsed,unsigned cloud)
 {
-    uint32_t phase=(elapsed+(cloud ? 2250000U : 900000U))%PET_CLOUD_PERIOD_MS;
-    return -160+(int)((uint64_t)phase*(pet_scene.width+320)/PET_CLOUD_PERIOD_MS);
+    uint32_t phase=(elapsed+cloud_phase_offset[cloud])%PET_CLOUD_PERIOD_MS;
+    return -160.0f+(float)((uint64_t)phase*(pet_scene.width+320)/PET_CLOUD_PERIOD_MS);
 }
 static void scene_cloud_tick(lv_timer_t *timer)
 {
     (void)timer;
     uint32_t elapsed=lv_tick_elaps(pet_scene.cloud_started);
-    for(unsigned i=0;i<2;i++) lv_obj_set_x(pet_scene.clouds[i],scene_cloud_x(elapsed,i));
+    for(unsigned i=0;i<2;i++) lv_obj_set_x(pet_scene.clouds[i],(lv_coord_t)lrintf(scene_cloud_x(elapsed,i)));
 }
 static float scene_wind_wave(float t,float period)
 {
@@ -75,45 +81,23 @@ static void scene_wind_tick(lv_timer_t *timer)
         pet_scene.gust=false; pet_scene.wind_started=lv_tick_get(); pet_scene.wind_wait=lv_rand(7000,18000);
     }
 }
-static void scene_cloud_part(lv_obj_t *parent,int x,int y,int w,int h,bool pale)
-{
-    lv_obj_t *part=lv_obj_create(parent); lv_obj_remove_style_all(part);
-    lv_obj_set_pos(part,x,y); lv_obj_set_size(part,w,h);
-    lv_obj_set_style_radius(part,LV_RADIUS_CIRCLE,0);
-    lv_obj_set_style_bg_color(part,lv_color_hex(pale ? 0xEFF8FE : 0xFFFFFF),0);
-    lv_obj_set_style_bg_opa(part,LV_OPA_COVER,0);
-    lv_obj_set_clickable(part,false); lv_obj_set_scrollable(part,false);
-}
 static void scene_create_background(lv_obj_t *parent,int w,int h)
 {
     pet_scene.width=w;
     lv_obj_t *base=lv_img_create(parent); lv_img_set_src(base,&pet_scene_base);
     lv_obj_set_pos(base,0,0); lv_obj_set_size(base,w,h); lv_obj_set_clickable(base,false);
+    const lv_image_dsc_t *cloud_art[2]={&pet_scene_cloud_near,&pet_scene_cloud_far};
     for(unsigned i=0;i<2;i++) {
-        lv_obj_t *group=lv_obj_create(parent); lv_obj_remove_style_all(group);
-        lv_obj_set_size(group,i ? 98 : 148,i ? 42 : 66);
-        lv_obj_set_pos(group,0,i ? 96 : 25);
-        lv_obj_set_style_opa_layered(group,i ? 178 : 245,0);
+        lv_obj_t *group=lv_img_create(parent);
+        lv_img_set_src(group,cloud_art[i]);
+        lv_obj_set_size(group,cloud_art[i]->header.w,cloud_art[i]->header.h);
+        lv_obj_set_pos(group,0,i ? 88 : 34);
+        lv_obj_set_style_opa_layered(group,i ? 205 : 245,0);
         lv_obj_set_clickable(group,false); lv_obj_set_scrollable(group,false);
-        if(i==0) {
-            /* Nearby cumulus: tall, uneven lobes and a rounded full base. */
-            scene_cloud_part(group,8,39,132,23,true);
-            scene_cloud_part(group,18,25,55,34,false);
-            scene_cloud_part(group,48,5,60,53,false);
-            scene_cloud_part(group,89,23,44,36,false);
-            scene_cloud_part(group,6,40,136,17,false);
-        }
-        else {
-            /* Distant cloud: flatter, smaller, asymmetrical and more diffuse. */
-            scene_cloud_part(group,4,26,91,12,true);
-            scene_cloud_part(group,9,17,42,19,false);
-            scene_cloud_part(group,40,9,33,25,false);
-            scene_cloud_part(group,66,22,29,14,false);
-        }
         pet_scene.clouds[i]=group;
     }
     pet_scene.cloud_started=lv_tick_get(); scene_cloud_tick(NULL);
-    pet_scene.cloud_timer=lv_timer_create(scene_cloud_tick,1000,NULL);
+    pet_scene.cloud_timer=lv_timer_create(scene_cloud_tick,33,NULL);
 }
 static void scene_create_foreground(lv_obj_t *parent)
 {

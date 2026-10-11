@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define WALK_CYCLE_MS 1200
+#define WALK_CYCLE_MS 800
 #define WALK_STRIDE_PX 24
 #define WALK_STANCE_FRACTION 0.56f
 #define WALK_SWING_LIFT_PX 11.0f

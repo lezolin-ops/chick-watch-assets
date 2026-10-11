@@ -1,0 +1,27 @@
+{
+  "mode": "built-in image_gen",
+  "yellow_reference": "../soft_style_v1/side_clean.png",
+  "selected_overrides": [
+    {
+      "asset": "daily_eyes.png",
+      "prompt": "Use case: precise-object-edit. Asset type: registered game sprite atlas palette correction. Image1 EDIT TARGET (4 columns x 3 rows, 12 poses); Image2 EXACT yellow material reference, approved side chick. Edit Image1 YELLOW FEATHERS ONLY. Match Image2 bright saturated warm-lemon-yellow colour and softer shadow contrast across every pose. In opaque yellow midtone regions aim for RGB approximately (252,223,50), NOT the darker amber/golden yellow currently on Image1. Highlights must stay yellow, not cream/white, shadows softly warm yellow-orange like image2 and not a heavy orange perimeter band. Keep soft dimensional shading, no hard outlining. CRITICAL invariants: exact SAME shapes, silhouettes, framing, cell layout, pose geometry, tuft, wings, eyes and eye-reflection details, eyebrows, pink cheeks, orange matte beaks, orange feet, mouth openings, props and alpha shapes. Do NOT recolour orange beaks/feet/eyebrows to yellow, and do not alter or add eye highlights. Do not recreate any parts or copy Image2 bird geometry; only transfer Image2 FEATHER material colour to existing Image1 silhouettes. Feather material must match across all cells. Preserve genuine fully transparent background, no glow, no painted checkerboard, no cast shadow, no text."
+    },
+    {
+      "asset": "sky.png",
+      "prompt": "Use case: precise-object-edit. Asset type: registered game sprite atlas palette correction. Image1 EDIT TARGET (3 columns x 1 row, 3 upward gaze poses); Image2 EXACT yellow material reference, approved side chick. Edit Image1 YELLOW FEATHERS ONLY. Match Image2 bright saturated warm-lemon-yellow colour and softer shadow contrast across every pose. In opaque yellow midtone regions aim for RGB approximately (252,223,50), NOT the darker amber/golden yellow currently on Image1. Highlights must stay yellow, not cream/white, shadows softly warm yellow-orange like image2 and not a heavy orange perimeter band. Keep soft dimensional shading, no hard outlining. CRITICAL invariants: exact SAME shapes, silhouettes, framing, cell layout, pose geometry, tuft, wings, eyes and eye-reflection details, eyebrows, pink cheeks, orange matte beaks, orange feet, mouth openings, props and alpha shapes. Do NOT recolour orange beaks/feet/eyebrows to yellow, and do not alter or add eye highlights. Do not recreate any parts or copy Image2 bird geometry; only transfer Image2 FEATHER material colour to existing Image1 silhouettes. Feather material must match across all cells. Preserve genuine fully transparent background, no glow, no painted checkerboard, no cast shadow, no text."
+    },
+    {
+      "asset": "wing.png",
+      "prompt": "Use case: precise-object-edit. Asset type: registered game sprite atlas palette correction. Image1 EDIT TARGET (6 columns x 4 rows, 24 isolated wings, wings ONLY); Image2 EXACT yellow material reference, approved side chick. Edit Image1 YELLOW FEATHERS ONLY. Match Image2 bright saturated warm-lemon-yellow colour and softer shadow contrast across every pose. In opaque yellow midtone regions aim for RGB approximately (252,223,50), NOT the darker amber/golden yellow currently on Image1. Highlights must stay yellow, not cream/white, shadows softly warm yellow-orange like image2 and not a heavy orange perimeter band. Keep soft dimensional shading, no hard outlining. CRITICAL invariants: exact SAME shapes, silhouettes, framing, cell layout, pose geometry, tuft, wings, eyes and eye-reflection details, eyebrows, pink cheeks, orange matte beaks, orange feet, mouth openings, props and alpha shapes. Do NOT recolour orange beaks/feet/eyebrows to yellow, and do not alter or add eye highlights. Do not recreate any parts or copy Image2 bird geometry; only transfer Image2 FEATHER material colour to existing Image1 silhouettes. Feather material must match across all cells. Preserve genuine fully transparent background, no glow, no painted checkerboard, no cast shadow, no text."
+    }
+  ],
+  "unchanged_sources": [
+    "side_clean",
+    "rest",
+    "ground",
+    "front",
+    "states",
+    "beak",
+    "feet"
+  ]
+}

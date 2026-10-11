@@ -1,11 +1,12 @@
 """Align the consistent round wing drawings into shared side/front rig frames."""
 from pathlib import Path
+import sys
 from math import atan2,degrees
 from PIL import Image,ImageOps
 from prepare_state_sprites import clean_alpha,keep_largest_component
 from generate_lvgl_argb8888 import write_c_image
 ROOT=Path(__file__).resolve().parents[2]
-sheet=Image.open(ROOT/'assets/chick_character_design_pack/wing_unified_source_v2.png').convert('RGBA')
+sheet=Image.open(Path(sys.argv[1]) if len(sys.argv)>1 else ROOT/'assets/chick_character_design_pack/wing_unified_source_v2.png').convert('RGBA')
 angles=[0,5,12,20,12,5]
 for view,row,target_width in [('side',0,42),('front',2,28)]:
     cells=[]

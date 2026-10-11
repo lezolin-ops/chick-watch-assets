@@ -1,5 +1,6 @@
 """Package ground-looking head frames on the original fixed seated lower body."""
 from pathlib import Path
+import sys
 from PIL import Image
 from prepare_state_sprites import clean_alpha,keep_largest_component
 from generate_lvgl_argb8888 import write_c_image
@@ -7,7 +8,7 @@ from prepare_blink_geometry import geometry
 ROOT=Path(__file__).resolve().parents[2]
 folder=ROOT/'assets/runtime/chick/ground_head'
 folder.mkdir(parents=True,exist_ok=True)
-source=Image.open(ROOT/'assets/chick_character_design_pack/ground_head_source_v1.png').convert('RGBA')
+source=Image.open(Path(sys.argv[1]) if len(sys.argv)>1 else ROOT/'assets/chick_character_design_pack/ground_head_source_v1.png').convert('RGBA')
 base=Image.open(ROOT/'assets/runtime/chick/daily/right_0.png').convert('RGBA')
 bounds=base.getchannel('A').getbbox()
 mask=Image.new('L',(192,192),0)

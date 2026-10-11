@@ -21,6 +21,8 @@
 | `lvgl-simulator/` | LVGL PC 模拟器工程（编译产物 `bin/main`） | ✅ 已跑通 |
 | `lvgl-simulator/src/pet.c` `pet.h` | **宠物核心模块（平台无关，真机直接复用）** | ✅ P0 完成 |
 | `lvgl-simulator/src/pet_chick.c` | 小黄鸡贴图（LVGLImage.py 生成，ARGB8888 C 数组） | ✅ |
+| `LOTTIE.md` | **Lottie 动画路线专档**：ThorVG 兼容字段规范、渲染顺序、几何/调试经验、生成流程 | ✅ 验证通过 |
+| `lvgl-simulator/src/lottie_demo.c` + `lottie_chick_flap_data.h` | Lottie 小鸡动画 Demo（lv_lottie + ThorVG 播放） | ✅ 运行中 |
 | `tools/` | 本地工具链（venv: cmake/ninja、sdl2-prefix: SDL2） | ✅ |
 | `firmware/` | 真机 ESP-IDF 工程（开发板到货后创建） | 📦 占位 |
 | `assets/` | 宠物形象素材：原始参考图、完整角色设定包、透明母版与 64/128/192/256 运行时尺寸 | ✅ |
@@ -55,10 +57,14 @@ DYLD_LIBRARY_PATH=../tools/sdl2-prefix/lib ./bin/main
 3. **宠物 UI 代码平台无关**：`pet.c/pet.h` 只依赖 LVGL，模拟器（SDL）与真机（ESP-IDF）共用同一份代码，仅屏幕尺寸参数不同
 4. 交付文档为本地文件（用户明确要求，不用飞书在线文档）
 5. **宠物形象 = 小黄鸡**（用户提供参考图）：白底转透明 + 缩放到 128×128 + LVGLImage.py 转 ARGB8888 C 数组（`src/pet_chick.c`）；动画全部程序化（呼吸/心跳/眨眼/微动），贴图只管形象
+6. **动画主路线 = Lottie + ThorVG**（用户否掉纯程序化动画，认可 Lottie）：`lv_lottie` 播放手写 JSON（C 数组内嵌）；手写 JSON 必须带官方字段全集（bm/ix/np/cix/hd/mn/sa/sk/meta），缺字段会被 ThorVG **静默渲染成全透明**；图层数组第一个渲染在最顶；细节见 [LOTTIE.md](LOTTIE.md)
 
 ## 六、待办
 
 - [x] P0 四动画开发完成并在模拟器验收
+- [x] Lottie 路线最小验证通过（小鸡完整渲染 + 动画循环）
+- [ ] Lottie 造型精修（翅膀更像翅膀/腮红/按素材比例）
+- [ ] Lottie 动画嵌入日常行为（窝坐扇翅、点击开心、行走摆翅）
 - [ ] P1 交互开发（触摸开心/摇一摇反应）——模拟器先行
 - [ ] 宠物形象扩展：闭眼帧 / 表情帧（AI 生成，规格 128×128 透明底）
 - [ ] 开发板到货 → 建 `firmware/` ESP-IDF 工程 → 移植 pet.c + 贴图

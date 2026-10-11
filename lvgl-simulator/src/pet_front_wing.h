@@ -13,8 +13,8 @@ static bool is_cheek(const uint8_t *p)
 { return p[2]>220 && p[1]>85 && p[1]<190 && p[0]>85; }
 static void match_wing_outline(uint8_t *p)
 {
-    if(p[2]>80 && p[1]<160 && p[0]<100 && p[2]-p[1]>60)
-        { p[2]=214; p[1]=142; p[0]=0; }
+    /* Preserve authored soft overlap shading; do not reintroduce contours. */
+    (void)p;
 }
 static pet_color_cache_t wing_material_cache[12];
 static unsigned wing_material_count;

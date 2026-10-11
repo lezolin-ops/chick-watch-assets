@@ -1,0 +1,29 @@
+{
+  "mode": "built-in image_gen",
+  "assets": [
+    {
+      "name": "wing",
+      "prompt": "Use case: style-transfer. Asset type: registered transparent game sprite atlas. Image1 EDIT TARGET, image2 approved MATERIAL STYLE only. Edit image1 preserving exact atlas layout and geometry. Exactly 6 columns x 4 rows of isolated wing parts. Rows1-2 side wings, rows3-4 frontal wings. Keep every short rounded three-lobe silhouette, shoulder root and pose. Wings ONLY, no torso/rump sliver. Warm yellow identical to body, soft overlap shades no outline. Apply reference warm bright yellow, pink cheeks, crisp NO-hard-outline edges, restrained soft warm-orange shading. NOT white/pale, 3D plastic, blurry or over-textured. Eyes where present dark brown-black main white upper glint and tiny muted warm-brown lower dot, no glitter/eyelashes. Beak ALWAYS matte with NO white shiny marks. Remove all hard brown/orange perimeter strokes including wings, toes, tuft. Actual transparent alpha background, no orange glow or cast shadow, no text/checkerboard painted in. Only parts already in target."
+    },
+    {
+      "name": "front",
+      "prompt": "Use case: style-transfer. Asset type: registered transparent game sprite atlas. Image1 EDIT TARGET, image2 approved MATERIAL STYLE only. Edit image1 preserving exact atlas layout and geometry. Exactly 3 columns x 2 rows six frontal standing chick wing flap poses. Head/body/feet stationary and same scale. Wing poses preserved, no long feather fingers. Closed matte small orange beak all six. Apply reference warm bright yellow, pink cheeks, crisp NO-hard-outline edges, restrained soft warm-orange shading. NOT white/pale, 3D plastic, blurry or over-textured. Eyes where present dark brown-black main white upper glint and tiny muted warm-brown lower dot, no glitter/eyelashes. Beak ALWAYS matte with NO white shiny marks. Remove all hard brown/orange perimeter strokes including wings, toes, tuft. Actual transparent alpha background, no orange glow or cast shadow, no text/checkerboard painted in. Only parts already in target."
+    },
+    {
+      "name": "beak",
+      "prompt": "Use case: precise-object-edit. Edit this existing transparent 3x3 beak grid. ONLY remove hard dark contour strokes and white shiny streaks, replacing outlines with adjacent matte orange surface. Preserve ALL existing shapes, layout, proportions, mouth openings/foot ankle stalks and clear seams. CRITICAL beaks/feet are ORANGE (upper surface RGB255,136,45, lower surface RGB244,108,35), NOT yellow/gold/cream. Soft restrained ORANGE overlap shadows, no orange halo, no glow, no rim lines. Beak upper and lower two planes completely matte. EXACT same poses as input, no extra objects. Actual transparent background and alpha preserved."
+    },
+    {
+      "name": "feet",
+      "prompt": "Use case: precise-object-edit. Edit this existing transparent 2x1 foot grid. ONLY remove hard dark contour strokes and white shiny streaks, replacing outlines with adjacent matte orange surface. Preserve ALL existing shapes, layout, proportions, mouth openings/foot ankle stalks and clear seams. CRITICAL beaks/feet are ORANGE (upper surface RGB255,136,45, lower surface RGB244,108,35), NOT yellow/gold/cream. Soft restrained ORANGE overlap shadows, no orange halo, no glow, no rim lines. Beak upper and lower two planes completely matte. EXACT same poses as input, no extra objects. Actual transparent background and alpha preserved."
+    },
+    {
+      "name": "states",
+      "prompt": "Use case: style-transfer. Asset type: registered transparent game sprite atlas. Image1 EDIT TARGET, image2 approved MATERIAL STYLE only. Edit image1 preserving exact atlas layout and geometry. Exactly 3 columns x 2 rows six expression sprites. Keep exact expressions, props, anatomy and layout. No perimeter lines; same warm yellow material throughout. Apply reference warm bright yellow, pink cheeks, crisp NO-hard-outline edges, restrained soft warm-orange shading. NOT white/pale, 3D plastic, blurry or over-textured. Eyes where present dark brown-black main white upper glint and tiny muted warm-brown lower dot, no glitter/eyelashes. Beak ALWAYS matte with NO white shiny marks. Remove all hard brown/orange perimeter strokes including wings, toes, tuft. Actual transparent alpha background, no orange glow or cast shadow, no text/checkerboard painted in. Only parts already in target."
+    },
+    {
+      "name": "daily_eyes",
+      "prompt": "Use case: precise-object-edit. Edit image1 only, exact same 4x3 sprite atlas. Change ONLY interior of every visible eye: preserve existing dark brown-black oval and white main upper glint. Add a tiny subdued warm-brown circular secondary reflection at lower-left inside EACH eye, around 12% of eye width, clearly present but subtle, consistent with image2 chick eyes. Do not change body, beaks, legs, wings, tuft, poses, geometry, yellow tones or opacity silhouettes. No eyelashes, glitter or extra white reflections. Preserve genuine transparent background. Critical all 12 cells' eyes updated, including profile one-eye poses."
+    }
+  ]
+}
