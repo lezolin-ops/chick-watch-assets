@@ -4,7 +4,19 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
-#include "../src/pet.c"
+#ifndef PET_TEST_SOURCE
+#define PET_TEST_SOURCE "../src/pet.c"
+#endif
+#include PET_TEST_SOURCE
+
+static const lv_image_dsc_t *test_image(const lv_image_dsc_t *source)
+{
+#if PET_USE_PACKED_ASSETS
+    return pet_resource_image(source);
+#else
+    return source;
+#endif
+}
 
 static uint8_t draw_buffer[410 * 502 * 4];
 static uint8_t screen_buffer[410 * 502 * 4];
@@ -13,6 +25,7 @@ static uint8_t mouth_baseline[410 * 502 * 4];
 
 static unsigned alpha_at(const lv_image_dsc_t *image, int x, int y)
 {
+    image=test_image(image);
     if(x < 0 || y < 0 || x >= image->header.w || y >= image->header.h) return 0;
     return image->data[y * image->header.stride + x * 4 + 3];
 }
@@ -22,7 +35,7 @@ static void verify_cloud_art(void)
     const lv_image_dsc_t *clouds[2]={&pet_scene_cloud_near,&pet_scene_cloud_far};
     assert(clouds[0]->header.w>clouds[1]->header.w*1.8f);
     for(unsigned n=0;n<2;n++) {
-        const lv_image_dsc_t *cloud=clouds[n];
+        const lv_image_dsc_t *cloud=test_image(clouds[n]);
         unsigned opaque=0,soft=0,white=0,blue=0;
         for(unsigned i=0;i<cloud->data_size;i+=4) {
             const uint8_t *p=cloud->data+i;
@@ -93,7 +106,7 @@ static void verify_gait(void)
         if(hair.bend>0.1f) rebounded=true;
     }
     assert(rebounded && hair.bend==0 && hair.velocity==0);
-    const lv_image_dsc_t *raw=frames[0][0];
+    const lv_image_dsc_t *raw=test_image(frames[0][0]);
     const lv_image_dsc_t *bent=tuft_apply(raw,2.4f);
     unsigned root=tuft_base_y(raw);
     assert(root>24 && memcmp(raw->data,bent->data,root*raw->header.stride)!=0);
@@ -147,6 +160,13 @@ static void flush(lv_display_t *display, const lv_area_t *area, uint8_t *pixels)
 static void save_preview(lv_display_t *display, const char *path)
 {
     lv_refr_now(display);
+    char redirected[1024];
+    const char *directory=getenv("PET_PREVIEW_DIR");
+    if(directory) {
+        const char *name=strrchr(path,'/');
+        snprintf(redirected,sizeof(redirected),"%s/%s",directory,name ? name+1 : path);
+        path=redirected;
+    }
     FILE *file = fopen(path, "wb");
     assert(file);
     fprintf(file, "P6\n410 502\n255\n");
@@ -160,6 +180,7 @@ static void save_preview(lv_display_t *display, const char *path)
 
 int main(void)
 {
+    lv_init(); /* Resource cache eviction may use LVGL before scene creation. */
     pet_scene.width=410;
     assert(scene_cloud_x(0,0)==scene_cloud_x(PET_CLOUD_PERIOD_MS,0));
     uint32_t cloud_wrap=PET_CLOUD_PERIOD_MS-cloud_phase_offset[0];
@@ -171,7 +192,7 @@ int main(void)
     double means[2][3]={{0}};
     const lv_image_dsc_t *materials[2]={frames[0][3],side_bodies[0][0]};
     for(unsigned n=0;n<2;n++) {
-        const lv_image_dsc_t *raw=materials[n], *graded=pet_color_image(raw);
+        const lv_image_dsc_t *raw=test_image(materials[n]), *graded=pet_color_image(raw);
         if(n==0) assert(raw==graded); /* Front artwork is byte-for-byte original. */
         unsigned count=0;
         for(unsigned i=0;i<raw->data_size;i+=4) {
@@ -201,7 +222,6 @@ int main(void)
     printf("PASS: unified ungraded artwork; body means front %.1f/%.1f/%.1f, side %.1f/%.1f/%.1f; configured cloud period and damped wind.\n",means[0][0],means[0][1],means[0][2],means[1][0],means[1][1],means[1][2]);
     verify_gait();
     verify_attachment();
-    lv_init();
     lv_display_t *display = lv_display_create(410, 502);
     lv_display_set_color_format(display, LV_COLOR_FORMAT_ARGB8888);
     lv_display_set_buffers(display, draw_buffer, NULL, sizeof(draw_buffer), LV_DISPLAY_RENDER_MODE_FULL);
@@ -255,7 +275,8 @@ int main(void)
         for(int y=region->y;y<region->y+region->h;y++) for(int x=region->x-3;x<region->x+region->w+3;x++) {
             const uint8_t *p=screen_buffer+((face_origin.y1+y)*410+face_origin.x1+x)*4;
             if(p[2]<85 && p[1]<75 && p[0]<65) { mean+=x; count++; }
-            const uint8_t *raw=frames[0][0]->data+y*frames[0][0]->header.stride+x*4;
+            const lv_image_dsc_t *reference=test_image(frames[0][0]);
+            const uint8_t *raw=reference->data+y*reference->header.stride+x*4;
             if(raw[2]<85 && raw[1]<75 && raw[0]<65) { raw_mean+=x; raw_count++; }
         }
         assert(count>50 && raw_count>50);
@@ -277,7 +298,7 @@ int main(void)
         if(frame>0) {
             const lv_image_dsc_t *image=lv_img_get_src(s_pet.img);
             for(unsigned y=150;y<192;y++)
-                assert(memcmp(image->data+y*image->header.stride,frames[0][0]->data+y*frames[0][0]->header.stride,192*4)==0);
+                assert(memcmp(image->data+y*image->header.stride,test_image(frames[0][0])->data+y*frames[0][0]->header.stride,192*4)==0);
         }
     }
     show_frame(0,1);
@@ -309,7 +330,7 @@ int main(void)
         const lv_image_dsc_t *image=lv_img_get_src(s_pet.img);
         assert(lv_obj_get_x(s_pet.img)==0 && lv_obj_get_y(s_pet.img)==0);
         for(unsigned y=150;y<192;y++)
-            assert(memcmp(image->data+y*image->header.stride,frames[0][0]->data+y*frames[0][0]->header.stride,192*4)==0);
+            assert(memcmp(image->data+y*image->header.stride,test_image(frames[0][0])->data+y*frames[0][0]->header.stride,192*4)==0);
     }
     rest_head_tick(4000+880+s_pet.head_hold);
     assert(!s_pet.head_turning && s_pet.gaze_y==0);
@@ -337,7 +358,7 @@ int main(void)
         show_ground_head(pose);
         const lv_image_dsc_t *image=lv_img_get_src(s_pet.img);
         for(unsigned y=150;y<192;y++)
-            assert(memcmp(image->data+y*image->header.stride,frames[0][0]->data+y*frames[0][0]->header.stride,192*4)==0);
+            assert(memcmp(image->data+y*image->header.stride,test_image(frames[0][0])->data+y*frames[0][0]->header.stride,192*4)==0);
     }
     rest_head_tick(4000+880+s_pet.head_hold);
     assert(!s_pet.head_turning && s_pet.gaze_y==0);
@@ -507,16 +528,16 @@ int main(void)
 
     /* Verify real drawn frames, fixed shoulder attachment and mirrored views. */
     for(unsigned direction=0;direction<2;direction++) for(unsigned frame=0;frame<6;frame++) {
-        const lv_image_dsc_t *wing=wing_animation[direction][frame];
+        const lv_image_dsc_t *wing=test_image(wing_animation[direction][frame]);
         unsigned area=0,base_area=0;
         for(unsigned pixel=0;pixel<wing->data_size;pixel+=4) {
             area+=wing->data[pixel+3]>160;
-            base_area+=wing_animation[direction][0]->data[pixel+3]>160;
+            base_area+=test_image(wing_animation[direction][0])->data[pixel+3]>160;
         }
         assert(area>base_area*0.85f && area<base_area*1.15f);
         assert(alpha_at(wing,direction ? 9 : 54,34)>160);
         assert(alpha_at(side_bodies[direction][0],direction ? 118 : 73,108)>180);
-        if(frame) assert(memcmp(wing->data,wing_animation[direction][frame-1]->data,wing->data_size)!=0);
+        if(frame) assert(memcmp(wing->data,test_image(wing_animation[direction][frame-1])->data,wing->data_size)!=0);
         show_walk(0,direction ? -1 : 1);
         show_wing_frame(frame,direction ? -1 : 1);
         char path[120]; snprintf(path,sizeof(path),"build/animation-preview/wing-pose-%u-%u.ppm",direction,frame);
@@ -624,6 +645,12 @@ int main(void)
     assert(s_pet.mouth_stage == 0 && !s_pet.calling);
     printf("PASS: plant roots anchored throughout gust; frontal mouth regions, unmasked side portraits; %u quiet calls.\n", calls);
     printf("PASS: bounded grounded torso/wing motion, original face pixels; %u phase transitions, %u center returns, %u blinks (%u while walking); sleep stops face actions.\n", transitions, returns, blinks, walk_blinks);
+#if PET_USE_PACKED_ASSETS
+    assert(pet_resource_peak<=PET_RESOURCE_BUDGET_BYTES);
+    assert(pet_resource_body_count<=PET_RESOURCE_BODY_LIMIT);
+    printf("PASS: lossless resource cache peak %zu B, %u loads, %u hits, %u evictions, %u active poses.\n",
+           pet_resource_peak,pet_resource_loads,pet_resource_hits,pet_resource_evictions,pet_resource_body_count);
+#endif
     lv_deinit();
     return 0;
 }

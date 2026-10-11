@@ -1,10 +1,7 @@
 /* Front wing drawing patches: the original face, centre and feet never move. */
 #ifndef PET_FRONT_WING_H
 #define PET_FRONT_WING_H
-#include "esp_attr.h"
-#ifndef PET_EXT_RAM_BSS
-#define PET_EXT_RAM_BSS EXT_RAM_BSS_ATTR
-#endif
+#include "pet_platform.h"
 static const lv_image_dsc_t *const front_flap_patch[2][6]={
     {&pet_front_flap_patch_0_left,&pet_front_flap_patch_1_left,&pet_front_flap_patch_2_left,&pet_front_flap_patch_3_left,&pet_front_flap_patch_4_left,&pet_front_flap_patch_5_left},
     {&pet_front_flap_patch_0_right,&pet_front_flap_patch_1_right,&pet_front_flap_patch_2_right,&pet_front_flap_patch_3_right,&pet_front_flap_patch_4_right,&pet_front_flap_patch_5_right}
@@ -24,6 +21,7 @@ static pet_color_cache_t wing_material_cache[12];
 static unsigned wing_material_count;
 static const lv_image_dsc_t *wing_frame_material(const lv_image_dsc_t *source)
 {
+    source=pet_resource_image(source);
     for(unsigned i=0;i<wing_material_count;i++) if(wing_material_cache[i].source==source) return &wing_material_cache[i].image;
     if(wing_material_count>=12) return source;
     uint8_t *pixels=malloc(source->data_size); if(!pixels) return source;
@@ -35,6 +33,7 @@ static const lv_image_dsc_t *wing_frame_material(const lv_image_dsc_t *source)
 }
 static const lv_image_dsc_t *front_body_pose(const lv_image_dsc_t *source,bool seated,unsigned frame)
 {
+    source=pet_resource_image(source);
     if(frame==0) return source; /* Exact original folded pose, no size jump. */
     if(front_wing_body_source==source && front_wing_body_frame==frame) return &front_wing_body;
     front_wing_body_source=source; front_wing_body_frame=frame;
@@ -43,7 +42,7 @@ static const lv_image_dsc_t *front_body_pose(const lv_image_dsc_t *source,bool s
     memcpy(front_wing_body_pixels,source->data,source->data_size);
     int offset=seated ? 32 : 0;
     for(unsigned side=0;side<2;side++) {
-        const lv_image_dsc_t *patch=front_flap_patch[side][frame];
+        const lv_image_dsc_t *patch=pet_resource_image(front_flap_patch[side][frame]);
         int x0=side ? 132 : 10;
         for(int py=0;py<68;py++) for(int px=0;px<50;px++) {
             int x=x0+px,y=80+offset+py;

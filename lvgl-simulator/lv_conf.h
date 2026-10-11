@@ -899,7 +899,7 @@
 #define LV_USE_RLE 1
 
 /** LZ4 compress/decompress functions, used by LVGL's compressed binary images. */
-#define LV_USE_LZ4 0
+#define LV_USE_LZ4 1
 
 #if LV_USE_LZ4
 /** Bundled LZ4 */

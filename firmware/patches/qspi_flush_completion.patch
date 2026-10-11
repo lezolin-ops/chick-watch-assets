@@ -1,0 +1,33 @@
+diff --git a/firmware/managed_components/waveshare__esp32_s3_touch_amoled_2_06/esp32_s3_touch_amoled_2_06.c b/firmware/managed_components/waveshare__esp32_s3_touch_amoled_2_06/esp32_s3_touch_amoled_2_06.c
+--- a/firmware/managed_components/waveshare__esp32_s3_touch_amoled_2_06/esp32_s3_touch_amoled_2_06.c
++++ b/firmware/managed_components/waveshare__esp32_s3_touch_amoled_2_06/esp32_s3_touch_amoled_2_06.c
+@@ -554,24 +554,10 @@
+ #endif
+         }};
+-    const lvgl_port_display_rgb_cfg_t rgb_cfg = {
+-        .flags = {
+-#if CONFIG_BSP_LCD_RGB_BOUNCE_BUFFER_MODE
+-            .bb_mode = 1,
+-#else
+-            .bb_mode = 0,
+-#endif
+-#if CONFIG_BSP_DISPLAY_LVGL_AVOID_TEAR
+-            .avoid_tearing = true,
+-#else
+-            .avoid_tearing = false,
+-#endif
+-        }};
+-
+-#if CONFIG_BSP_LCD_RGB_BOUNCE_BUFFER_MODE
+-    ESP_LOGW(TAG, "CONFIG_BSP_LCD_RGB_BOUNCE_BUFFER_MODE");
+-#endif
+-
+-    lv_display_t *disp = lvgl_port_add_disp_rgb(&disp_cfg, &rgb_cfg);
++    /* QSPI panel: release the LVGL draw buffer only from the SPI colour
++     * transfer-complete callback. The RGB port releases it immediately and
++     * lets the next draw overwrite pixels still being consumed by SPI DMA. */
++    ESP_LOGI(TAG, "QSPI display: SPI completion callback, %d-pixel DMA buffer", buffer_size);
++    lv_display_t *disp = lvgl_port_add_disp(&disp_cfg);
+     if (!disp)
+     {
+         return NULL;

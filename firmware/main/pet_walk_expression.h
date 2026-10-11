@@ -2,10 +2,7 @@
  * marks beneath the independent wing; never replace or animate the rump. */
 #ifndef PET_WALK_EXPRESSION_H
 #define PET_WALK_EXPRESSION_H
-#include "esp_attr.h"
-#ifndef PET_EXT_RAM_BSS
-#define PET_EXT_RAM_BSS EXT_RAM_BSS_ATTR
-#endif
+#include "pet_platform.h"
 PET_EXT_RAM_BSS static uint8_t walk_expression_pixels[192*192*4];
 static lv_image_dsc_t walk_expression_image;
 static const lv_image_dsc_t *walk_expression_source;
@@ -14,6 +11,7 @@ static const lv_image_dsc_t *walk_expressive_body(const lv_image_dsc_t *source,
                                                 float distance,int direction)
 {
     (void)distance;
+    source=pet_resource_image(source);
     if(walk_expression_source==source && walk_expression_direction==direction)
         return &walk_expression_image;
     walk_expression_source=source;

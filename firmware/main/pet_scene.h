@@ -1,8 +1,10 @@
 /* Independent painted clouds and passing, damped gusts. */
 #ifndef PET_SCENE_H
 #define PET_SCENE_H
+#if !PET_USE_PACKED_ASSETS
 #include "pet_scene_assets.c"
 #include "pet_cloud_assets.c"
+#endif
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -84,12 +86,12 @@ static void scene_wind_tick(lv_timer_t *timer)
 static void scene_create_background(lv_obj_t *parent,int w,int h)
 {
     pet_scene.width=w;
-    lv_obj_t *base=lv_img_create(parent); lv_img_set_src(base,&pet_scene_base);
+    lv_obj_t *base=lv_img_create(parent); lv_img_set_src(base,pet_resource_image(&pet_scene_base));
     lv_obj_set_pos(base,0,0); lv_obj_set_size(base,w,h); lv_obj_clear_flag(base, LV_OBJ_FLAG_CLICKABLE);
     const lv_image_dsc_t *cloud_art[2]={&pet_scene_cloud_near,&pet_scene_cloud_far};
     for(unsigned i=0;i<2;i++) {
         lv_obj_t *group=lv_img_create(parent);
-        lv_img_set_src(group,cloud_art[i]);
+        lv_img_set_src(group,pet_resource_image(cloud_art[i]));
         lv_obj_set_size(group,cloud_art[i]->header.w,cloud_art[i]->header.h);
         lv_obj_set_pos(group,0,i ? 88 : 34);
         lv_obj_set_style_opa_layered(group,i ? 205 : 245,0);
@@ -103,6 +105,7 @@ static void scene_create_foreground(lv_obj_t *parent)
 {
     const lv_image_dsc_t *sources[2][2]={{&pet_scene_grass_0,&pet_scene_grass_1},{&pet_scene_flowers_0,&pet_scene_flowers_1}};
     for(unsigned layer=0;layer<2;layer++) for(unsigned half=0;half<2;half++) {
+        sources[layer][half]=pet_resource_image(sources[layer][half]);
         pet_scene.plants_source[layer][half]=sources[layer][half];
         pet_scene.plants_image[layer][half]=*sources[layer][half];
         pet_scene.plants_pixels[layer][half]=malloc(sources[layer][half]->data_size);

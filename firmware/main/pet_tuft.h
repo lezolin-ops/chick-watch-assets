@@ -1,10 +1,7 @@
 /* Secondary motion from the original tuft pixels. Root/head/face stay fixed. */
 #ifndef PET_TUFT_H
 #define PET_TUFT_H
-#include "esp_attr.h"
-#ifndef PET_EXT_RAM_BSS
-#define PET_EXT_RAM_BSS EXT_RAM_BSS_ATTR
-#endif
+#include "pet_platform.h"
 typedef struct { float bend,velocity,last_x,last_y; uint32_t tick; bool ready; } tuft_motion_t;
 PET_EXT_RAM_BSS static uint8_t tuft_pixels[192*192*4];
 static lv_image_dsc_t tuft_image;
@@ -36,6 +33,7 @@ static void tuft_motion_step(tuft_motion_t *motion,uint32_t now,float x,float y)
 static const lv_image_dsc_t *tuft_apply(const lv_image_dsc_t *source,float bend)
 {
     if(source==&tuft_image) source=tuft_original; /* Never accumulate deformation. */
+    source=pet_resource_image(source);
     tuft_original=source;
     if(fabsf(bend)<0.025f) return source;
     unsigned base=tuft_base_y(source);

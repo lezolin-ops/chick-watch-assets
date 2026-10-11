@@ -10,6 +10,7 @@
 
 # Firmware: keep only sources; build/component/backup artifacts are reproducible.
 /firmware/build/
+/build-clock-preview/
 /firmware/managed_components/
 /firmware/backup/
 /firmware/sdkconfig

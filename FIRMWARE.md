@@ -106,18 +106,48 @@ python3 ~/esp/esp-idf-5.4/components/esptool_py/esptool/esptool.py \
 - ✅ 改动：`partitions.csv` → `factory 10M, storage 5M`（storage 暂未使用；**素材压缩后应回退 8M**，见 §5）
 - 当前余量：0x157400 ≈ 1.35MB（13%）
 
+### 3.13 真机固定灰色横条：QSPI 屏误走 RGB 刷新路径（2026-10-11，已验收）
+
+- **现象**：官方出厂固件正常；本项目固件出现肉眼可见的灰白横条，排除仅由手机拍摄造成的条纹。
+- **根因链路**：本板初始化的是 QSPI 面板，但 BSP 的 `bsp_display_lcd_init()` 调用了 `lvgl_port_add_disp_rgb()`。该入口将显示类型设为 RGB；局部刷新后立即 `lv_disp_flush_ready()`，而 SPI DMA 仍可能读取行缓冲。LVGL 提前复用缓冲，导致显示数据被覆盖。
+- **本次唯一功能修复**：改为 `lvgl_port_add_disp(&disp_cfg)`，由该 SPI 接入路径注册 `.on_color_trans_done` 回调，传输完成后才允许复用绘图缓冲。删除不适用的 RGB 专用配置，并加启动日志 `QSPI display: SPI completion callback, 16400-pixel DMA buffer`。
+- **保留已有设置**：40 行内部 DMA 缓冲、32,800 字节最大传输、队列深度 4、亮度 50%、33ms 刷新周期；未改小鸡素材、动画、分区表或 NVS。
+- **配置核验**：`sdkconfig.defaults` 中写了 `CONFIG_BSP_DISPLAY_LVGL_FULL_REFRESH=y`，但它依赖 RGB 抗撕裂选项，实际 `sdkconfig`/生成头文件没有启用。因此此前“全刷新已消除灰线”的注释不是实测结论。本次不是靠启用全刷新修好的。
+- **构建与烧录**：ESP-IDF 5.4.2 增量构建通过；新镜像 `0x8a8400` 字节，10M 应用分区仍有约 13% 余量。通过 `idf.py -p /dev/cu.usbmodem1101 -b 460800 app-flash` 仅更新 `0x10000` 应用分区，保留 bootloader、分区表及 NVS。
+- **验收**：用户刷入后明确回复“正常了”，确认灰线已消失。触摸、长时间稳定性、功耗不因此自动视为已验收。
+- **回退备份**：旧项目固件 `firmware/backup/pet_watch_before_qspi_fix_20261011.bin`；原出厂备份 `firmware/backup/factory_flash_16MB.bin` 未覆盖。
+- **补丁持久化**：managed component 默认不入仓库，重新下载会覆盖本地修改。已保存 `firmware/patches/qspi_flush_completion.patch` 与使用说明；重新 resolve 后必须检查并重施该补丁，保留/核对之前的 DMA 与传输大小调整。
+
+### 3.14 资源无损压缩与后续开发流程（2026-10-11，已构建/主机验证，待压缩版真机验收）
+
+- **目标**：缩小固件，不删除散步等动画、不降低颜色/透明度精度、不恢复分区；保留后续素材和代码开发能力。
+- **方式**：原始 PNG 和 `firmware/main/` 原始 C 图片不改。`idf.py build` 自动生成 `build/generated/pet_packed_assets.c`；使用 LVGL 的标准 LZ4 压缩头及原有 ARGB8888 格式。打包时逐资源解压与原始字节比较，并输出 SHA-256/CRC32 清单；重复负载共享存储，未引用资源仍由链接器裁除。
+- **运行兼容**：眨眼、呆毛、翅膀和植物代码仍读取原来的未压缩 32 位像素。新增资源访问层负责解压；姿态使用六槽 LRU、稳定描述符地址和最近两姿态保护。解压缓存上限 3MiB，ESP32 显式分配在 PSRAM，不挤占显示 DMA 的内部 SRAM。
+- **测量**：129 个输入资源合计 11,907,808 字节 → 压缩负载 3,714,643 字节（含未最终链接的备用素材，不能把该总数等同于固件大小）。最终压缩固件约 3.23MiB，原运行固件约 8.66MiB；同源码关闭压缩的构建约 8.81MiB，包含同步开发中的时钟代码和当前框架配置。10MiB 应用分区保留，压缩版余量约 68%。
+- **验证**：129 个资源的原生解码 CRC32 全部匹配；1,200 次姿态访问/驱逐/重载验证通过。对实际固件 `pet.c` 分别按原始/压缩模式执行完整回归，两组共对应 936 张画面，逐文件字节比较 0 差异。散步、回中、转头、眨眼、扇翅、嘴部及睡眠暂停检查均通过；回归中解压缓存峰值 2,693,136 字节（约 2.57MiB），6 个活跃姿态。此数不含程序其他 RAM，亦不是实际真机 FPS 测量。
+- **开发入口**：修改/同步原始素材后正常构建即可；生成物不手改。`idf.py -D PET_PACK_RESOURCES=OFF build` 可做原始编码对照，`ON` 恢复默认。两种 ESP-IDF 构建均已验证；原始编码对照镜像另存 `firmware/backup/pet_watch_raw_resource_reference_20261011.bin`（不宣称与当前设备烧录版本完全相同）。
+- **安全/持久化**：保留 QSPI 修复和已有 DMA/亮度/刷新设置；修正 `sdkconfig.defaults` 的行内注释格式，确保新配置仍读到 40 行缓冲及 33ms 刷新，而非悄悄回退默认值。此资源优化阶段没有执行设备烧录；压缩版画面、触摸、FPS 与实际 RAM 仍需真机验收。
+- **说明与一键检查**：`firmware/RESOURCE_OPTIMIZATION.md`；`python3 firmware/tools/check_resources.py` 自动完成打包、缓存压力测试及原始/压缩全帧对照。未来多角色/换场景需按文档管理资源寿命，不能无上限保留全部解压图。
+
+### 3.15 横排钟表与自动黑屏（2026-10-11）
+
+- 已合并资源压缩、RTC 钟表、PMU 电量/充电显示、电源键短按切换与横排大字。
+- 钟表页 10% 亮度，每分钟整组 ±4px 移位，进入后 60 秒全黑并将 AMOLED 亮度归零；充电不延长显示。黑屏仅电源键唤醒回小鸡，保留原有小鸡页 15 秒无操作转钟表和 PMU 长按行为。
+- 字号、交互与验收步骤见 `firmware/WATCH_DISPLAY.md`。黑屏并非 CPU 深睡眠，PMU 轮询仍工作。
+- 最新固件 3,432,208 字节（约 3.27MiB），应用刷写及哈希校验通过，自动重启；用户反馈压缩后帧率上升，未进行同条件量化 A/B 测量。新版短按、字号及 60 秒黑屏尚待用户验收。
+
 ## 4. 当前产物
 
 | 产物 | 位置 | 状态 |
 |-|-|-|
 | 固件工程 | `firmware/`（CMakeLists=pet_watch，main.c=nvs+bsp_display_start+pet_create） | ✅ 编译通过（lvgl 9.6.0） |
 | 出厂备份 | `firmware/backup/factory_flash_16MB.bin` | ✅ 16MB |
-| 固件镜像 | `firmware/build/pet_watch.bin` | ✅ 8.66MB，**已烧录真机 2026-10-11** |
+| 固件镜像 | `firmware/build/pet_watch.bin` | ✅ 约3.27MiB压缩版含钟表/自动黑屏，已刷入并校验；最新交互待真机验收 |
 
 ## 5. 下一步
 
 1. **真机验收**：屏幕显示小鸡 + 触摸开心（模拟器已验收，真机待人工确认；`idf.py -p /dev/cu.usbmodem1101 monitor` 看 boot 日志）
-2. **素材压缩（排期中）**：156 个素材 ARGB8888(4B/px) → RGB565A8(3B/px) 预计 ~6.6MB，可回退 factory 8M 分区；源 PNG 在 `assets/chick_character_design_pack/`，生成脚本 `lvgl-simulator/tools/generate_lvgl_argb8888.py` 改格式后重新生成，模拟器+真机双端同步验证
+2. **素材压缩已实现（见 §3.14）**：采用无损 LZ4，仍保持 ARGB8888 和完整动画；压缩版约3.23MiB，待真机验证。先保留10MiB分区，不因能够装进8MiB就立即改分区。
 3. ~~API 还原~~：**✅ 已完成（2026-10-11）**，29 处 flag → 便捷 setter（`lv_obj_set_hidden/clickable/scrollable`），编译无警告，已重新烧录
 4. 里程碑二（发声）：IDF 已 5.4，加回 `espressif/esp_codec_dev` + I2S 驱动即可
 
@@ -187,3 +217,19 @@ python3 ~/esp/esp-idf-5.4/components/esptool_py/esptool/esptool.py \
 - 屏幕黑但日志正常 → 先查 touch/display 初始化是否报错；再查背光（BSP 默认开启）
 
 **装电池后补充**：重启 = PWR ≥6s 关机 → 点按 PWR 开机；可测电池电压/续航（AXP2101，§6.5）
+
+## 7. 息屏时钟原型（2026-10-11）
+
+- 新模块 `main/watch_clock.c`：纯黑背景、24 小时制大时间、数字日期与英文星期；不开秒数或步数占位；下方显示真实电量与充电状态。
+- 开机直接显示时钟方便预览；触摸返回宠物，闲置 15 秒重新进入时钟。时钟亮度 10%，宠物亮度维持 50%。暂停宠物的三个动画定时器，唤醒后继续；尚未接入 ESP32 深睡/自动轻睡，功耗未经真机测试。
+- 优先读取 PCF85063（I2C 0x51）；RTC 停振、时间无效时用编译时间初始化，无法读取时使用系统时钟加编译时间兜底。北京时间；尚无联网校时/手动校时入口，旧 RTC 时间也可能需要校准。
+- 时钟每秒检查时间，只在分钟变化时更新标签并轻微移动位置。
+- ESP-IDF 5.4.2 构建通过，未压缩预览镜像 `0x8ceb70` 字节，10M 应用分区约 12% 余量。预览 `assets/previews/watch-clock-v1.png` 使用模拟器 LVGL 绘制；不是屏幕实拍。
+- 素材压缩由另一个聊天并行开发。钟表验收使用独立构建目录：（从项目根目录执行）`idf.py -C firmware -B build-clock-preview -D PET_PACK_RESOURCES=OFF build`；预览镜像位于 `build-clock-preview/pet_watch.bin`。此构建目录隔离产物，但两个聊天仍共享源文件。
+- 本次电脑未发现手表串口，未烧录；连接后用 `idf.py -C firmware -B build-clock-preview -D PET_PACK_RESOURCES=OFF -p PORT app-flash` 仅更新应用分区，遵循 §3.13 的已有 QSPI 修复。
+
+### 7.1 电池显示
+
+读取 AXP2101（I2C 0x34）：状态寄存器 0x00/0x01 与百分比寄存器 0xA4，参考官方 01_AXP2101 的 XPowersLib。电池图标随电量变化；充电显示闪电，充满显示 FULL，无电池且检测到 USB 时显示 USB，无电池无 USB 显示 NO BATTERY，读取失败/百分比超范围显示 --%。不修改充电配置或电源输出。时钟显示时每 5 秒读取，文字有变化才重绘；进入时钟立即刷新。
+
+构建通过；7 个模拟状态检查通过（充电、充满、USB 无电池、无电池无 USB、放电、无效电量、读取失败）。`assets/previews/watch-clock-battery-v1.png` 为 78% 充电状态的 LVGL 布局示例，非真机电量；尚未连接手表验收。

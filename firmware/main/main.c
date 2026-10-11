@@ -8,6 +8,7 @@
 #include "bsp/esp-bsp.h"
 #include "bsp/display.h"
 #include "pet.h"
+#include "watch_clock.h"
 
 static const char *TAG = "pet_watch";
 
@@ -21,7 +22,12 @@ void app_main(void)
     bsp_display_start();
     ESP_LOGI(TAG, "display started, creating pet");
 
+    /* 2026-10-11：USB 供电（无电池）场景下背光 100% 全亮电流过大 → 电压跌落导致
+       SPI 传输失败 + USB 掉线（见 FIRMWARE.md §3.13）。降为 50% 减载；装电池后可调回 */
+    bsp_display_brightness_set(50);
+
     bsp_display_lock(0);
     pet_create(lv_screen_active(), 410, 502);
+    watch_clock_create(lv_screen_active());
     bsp_display_unlock();
 }

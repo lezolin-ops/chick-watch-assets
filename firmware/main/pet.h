@@ -33,6 +33,7 @@ void pet_create(lv_obj_t *parent, lv_coord_t w, lv_coord_t h);
 
 /** @brief IDLE resumes daily behavior; HUNGRY/SLEEP pause it until explicitly changed. */
 void pet_set_state(pet_state_t state);
+void pet_set_paused(bool paused);
 
 #ifdef __cplusplus
 }

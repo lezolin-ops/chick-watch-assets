@@ -2,33 +2,51 @@
 /* 大像素缓冲必须放 PSRAM(.ext_ram.bss)。保护式定义：不依赖 CONFIG 宏在本
  * 编译单元的可见性（2026-10-11 修复：原 #if defined(...) 判断失效，导致
  * tuft/walk_expression 缓冲落进内部 DRAM，链接溢出 152KB）。 */
-#include "esp_attr.h"
-#ifndef PET_EXT_RAM_BSS
-#define PET_EXT_RAM_BSS EXT_RAM_BSS_ATTR
-#endif
+#include "pet_platform.h"
 #include "pet.h"
+#if PET_USE_PACKED_ASSETS
+#include "pet_packed_assets.c"
+#endif
+#ifndef PET_USE_PACKED_ASSETS
+#define PET_USE_PACKED_ASSETS 0
+#endif
+#if !PET_USE_PACKED_ASSETS
 #include "pet_chick_hungry.c"
 #include "pet_chick_sleep.c"
 #include "bg_morning_meadow_home.c"
 #include "pet_daily_sprites.c"
 #include "pet_walk_rig_assets.c"
+#endif
 #include "pet_blink_geometry.h"
+#if !PET_USE_PACKED_ASSETS
 #include "pet_rest_head_assets.c"
+#endif
 #include "pet_rest_head_eyes.h"
+#if !PET_USE_PACKED_ASSETS
 #include "pet_sky_head_assets.c"
+#endif
 #include "pet_sky_head_eyes.h"
+#if !PET_USE_PACKED_ASSETS
 #include "pet_ground_head_assets.c"
+#endif
 #include "pet_ground_head_eyes.h"
 #include "pet_walk_gait.h"
 #include "pet_mouth_geometry.h"
+#if !PET_USE_PACKED_ASSETS
 #include "pet_beak_assets.c"
 #include "pet_side_mouth_bodies.c"
+#endif
 #include "pet_side_body_eyes.h"
 #include <string.h>
+#include "pet_resource_cache.h"
 #include "pet_material_palette.h"
+#if !PET_USE_PACKED_ASSETS
 #include "pet_wing_frames.c"
+#endif
 #include "pet_wing_animation.h"
+#if !PET_USE_PACKED_ASSETS
 #include "pet_front_flap_patches.c"
+#endif
 #include "pet_front_wing.h"
 #include "pet_walk_expression.h"
 #include "pet_scene.h"
@@ -389,7 +407,7 @@ static void show_sky_head(unsigned frame)
 {
     if(frame==0) { show_frame(0,1); return; }
     static const lv_image_dsc_t * const portraits[3]={&pet_sky_head_0,&pet_sky_head_1,&pet_sky_head_2};
-    lv_img_set_src(s_pet.img,portraits[frame-1]);
+    lv_img_set_src(s_pet.img,pet_color_image(portraits[frame-1]));
     s_pet.eyes=&sky_head_eyes[frame-1];
     s_pet.eye_direction=1;
     s_pet.mouth=NULL;
@@ -401,7 +419,7 @@ static void show_ground_head(unsigned frame)
 {
     if(frame==0) { show_frame(0,1); return; }
     static const lv_image_dsc_t * const portraits[3]={&pet_ground_head_0,&pet_ground_head_1,&pet_ground_head_2};
-    lv_img_set_src(s_pet.img,portraits[frame-1]);
+    lv_img_set_src(s_pet.img,pet_color_image(portraits[frame-1]));
     s_pet.eyes=&ground_head_eyes[frame-1];
     s_pet.eye_direction=1;
     s_pet.mouth=NULL;
@@ -418,7 +436,7 @@ static void show_rest_head(unsigned frame,int direction)
         {&pet_rest_head_0_right,&pet_rest_head_1_right,&pet_rest_head_2_right},
         {&pet_rest_head_0_left,&pet_rest_head_1_left,&pet_rest_head_2_left}
     };
-    lv_img_set_src(s_pet.img,portraits[direction<0][frame-1]);
+    lv_img_set_src(s_pet.img,pet_color_image(portraits[direction<0][frame-1]));
     s_pet.eyes=&rest_head_eyes[frame-1];
     s_pet.eye_direction=direction;
     s_pet.mouth=NULL; /* Closed illustrated bill; no competing mouth overlay. */
@@ -714,6 +732,16 @@ static void routine_timer_cb(lv_timer_t *timer)
     update_tuft();
 }
 
+void pet_set_paused(bool paused)
+{
+    lv_timer_t *timers[] = {s_pet.timer, s_pet.blink_timer, s_pet.mouth_timer};
+    for(unsigned i = 0; i < 3; i++) {
+        if(!timers[i]) continue;
+        if(paused) lv_timer_pause(timers[i]);
+        else lv_timer_resume(timers[i]);
+    }
+}
+
 void pet_set_state(pet_state_t state)
 {
     if(s_pet.pet == NULL || s_pet.img == NULL) return;
@@ -848,4 +876,9 @@ void pet_create(lv_obj_t *parent, lv_coord_t w, lv_coord_t h)
     s_pet.mouth_timer = lv_timer_create(mouth_timer_cb, 20, NULL);
     pet_set_state(PET_STATE_IDLE);
     scene_create_foreground(parent);
+#if PET_USE_PACKED_ASSETS && defined(ESP_PLATFORM)
+    ESP_LOGI("pet_resources","Lossless LZ4 enabled; decoded cache %u/%u bytes, pose slots %u/%u",
+             (unsigned)pet_resource_bytes,(unsigned)PET_RESOURCE_BUDGET_BYTES,
+             pet_resource_body_count,PET_RESOURCE_BODY_LIMIT);
+#endif
 }

@@ -10,6 +10,6 @@ static bool yellow_material(unsigned r,unsigned g,unsigned b)
 static const lv_image_dsc_t *pet_color_image(const lv_image_dsc_t *source)
 {
     /* All soft-style poses share authored matte materials; no pose grading. */
-    return source;
+    return pet_resource_image(source);
 }
 #endif
