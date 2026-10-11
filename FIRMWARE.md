@@ -63,7 +63,7 @@ idf.py -p /dev/cu.usbmodem1101 flash monitor   # 烧录+串口日志
 - ✅ 解法：`cp lvgl-simulator/src/pet_*.c pet_*.h bg_*.c firmware/main/`（156 个，全部是被 include 的素材，不会重复编译；CMakeLists SRCS 只有 `main.c pet.c`）
 - 报 `#include "pet_daily_right_0.c"` 找不到就是没拷全
 
-### 3.8 LVGL API 版本差异：9.6 → 9.5（2026-10-11 已升 9.6.0，转换待还原，见 §3.10）
+### 3.8 LVGL API 版本差异：9.6 → 9.5（2026-10-11 已升 9.6.0，转换已还原）
 - 模拟器 lvgl **v9.6.0-master**（`lv_version.h` 写 10.0.0-dev 只是 master 版本号预告，API 是 9.6 系），真机当时 9.5.0
   | 9.6 写法 | 9.5 等价 |
   |-|-|
@@ -71,7 +71,7 @@ idf.py -p /dev/cu.usbmodem1101 flash monitor   # 烧录+串口日志
   | `lv_obj_set_scrollable(o, bool)` | `lv_obj_add_flag/clear_flag(o, LV_OBJ_FLAG_SCROLLABLE)` |
   | `lv_obj_set_hidden(o, bool)` | `lv_obj_add_flag/clear_flag(o, LV_OBJ_FLAG_HIDDEN)` |
   | `lv_obj_set_hidden(o, 表达式)` | `lv_obj_set_flag(o, LV_OBJ_FLAG_HIDDEN, 表达式)` |
-- ✅ 已批量转换（pet.c + pet_scene.h），验证：`grep -rn "lv_obj_set_hidden\|lv_obj_set_clickable\|lv_obj_set_scrollable" main/` 应为 0
+- ✅ 真机侧已还原为 9.6 便捷写法（2026-10-11，29 处 flag → `lv_obj_set_hidden/clickable/scrollable`），deprecated 警告清零、与模拟器源码一致；验证：`grep -rn "lv_obj_add_flag\|lv_obj_clear_flag\|lv_obj_set_flag" main/` 应为 0
 
 ### 3.9 出厂固件备份（烧录前必做）
 ```bash
@@ -86,7 +86,7 @@ python3 ~/esp/esp-idf-5.4/components/esptool_py/esptool/esptool.py \
 - 背景：模拟器 lvgl 实际是 v9.6.0-master（FIRMWARE §3.8 的 9.6 vs 9.5 差异只有 3 个便捷函数）；统一版本消除每次拷素材的手动转换
 - **注意**：ESP 组件注册表有 9.6.0（2026-09-16 上传，`components.espressif.com/api/components/lvgl/lvgl` API 为准；网页缓存快照显示 "9.5.0 Latest" 是误导）
 - ✅ 改动：`main/idf_component.yml` → `lvgl/lvgl: "^9.6.0"`，重新 resolve + 全量重编
-- ⚠️ 9.6.0 中 `lv_obj_add_flag/clear_flag/set_flag` 已标 **deprecated**（建议用 `lv_obj_set_hidden/clickable/scrollable` 等便捷 setter）→ §3.8 的 29 处转换会产生编译警告，**应还原为便捷写法**（待做，见 §5）
+- ⚠️ 9.6.0 中 `lv_obj_add_flag/clear_flag/set_flag` 已标 **deprecated**（建议用 `lv_obj_set_hidden/clickable/scrollable` 等便捷 setter）→ §3.8 的 29 处转换已**还原为便捷写法**（2026-10-11，见 §5）
 - 真机 46 个 API 全部在 9.6.0 存在（含宏映射），编译通过
 
 ### 3.11 PET_EXT_RAM_BSS 条件宏失效：大像素缓冲落内部 DRAM，链接溢出 152KB
@@ -118,7 +118,7 @@ python3 ~/esp/esp-idf-5.4/components/esptool_py/esptool/esptool.py \
 
 1. **真机验收**：屏幕显示小鸡 + 触摸开心（模拟器已验收，真机待人工确认；`idf.py -p /dev/cu.usbmodem1101 monitor` 看 boot 日志）
 2. **素材压缩（排期中）**：156 个素材 ARGB8888(4B/px) → RGB565A8(3B/px) 预计 ~6.6MB，可回退 factory 8M 分区；源 PNG 在 `assets/chick_character_design_pack/`，生成脚本 `lvgl-simulator/tools/generate_lvgl_argb8888.py` 改格式后重新生成，模拟器+真机双端同步验证
-3. **API 还原（顺手做）**：§3.8 的 29 处 flag 转换还原为 `lv_obj_set_hidden/clickable/scrollable`（9.6.0 便捷 setter），消除 deprecated 警告、与模拟器源码逐字一致
+3. ~~API 还原~~：**✅ 已完成（2026-10-11）**，29 处 flag → 便捷 setter（`lv_obj_set_hidden/clickable/scrollable`），编译无警告，已重新烧录
 4. 里程碑二（发声）：IDF 已 5.4，加回 `espressif/esp_codec_dev` + I2S 驱动即可
 
 ## 6. 官方烧录说明通读要点（2026-10-11 补充，烧录前必看）
@@ -171,3 +171,19 @@ python3 ~/esp/esp-idf-5.4/components/esptool_py/esptool/esptool.py \
 | 同类现成方案 / 参考实现 | 官方 wiki「Project Resources」第三方项目 + Reddit r/esp32 + GitHub 搜索 | 2.06 已有开源项目：VolosR/waveshareControl、Tsixom0/Waveshare-esp32-s3-2.06-amoled-AI-Assistant、fbiego/chronos-navio |
 | UI 设计（SquareLine） | SquareLine Studio 官方教程 | 官方 wiki FAQ 提供入口 |
 | 商务 / 批量定制 | 微雪销售团队 | 官方不代改代码（DIY 定位），批量定制找商务 |
+
+### 6.7 真机验收操作流程（USB 供电 · 未装电池场景，2026-10-11）
+
+**烧录完成后按此走：**
+1. **断电重启 = 拔掉 USB → 重新插上**（USB 直连供电场景下拔插即断电重启；PWR 键关机/开机是电池场景逻辑，USB 插上即上电）
+2. 若串口显示 "waiting for download..."：**拔插一次 USB** 即可正常启动（不是烧坏，§6.2）
+3. **看屏幕**：应显示小鸡画面（模拟器已验收的默认态）；黑屏/花屏进异常分支
+4. **看日志**：`idf.py -p /dev/cu.usbmodem1101 monitor`，应有正常 boot 日志（ESP_LOGI），**无反复重启 / 无 panic**
+5. **触摸验证**：点按屏幕看宠物反应（开心等交互，模拟器已验收）
+6. **收尾**：`Ctrl+]` 退出 monitor —— monitor 占用串口，不退出会影响下次烧录（§6.3）
+
+**异常分支：**
+- 反复重启 / 无输出 → 程序崩溃：拔 USB → **按住 BOOT 插 USB**（强下载模式）→ 重烧 → 再拔插 USB 重启
+- 屏幕黑但日志正常 → 先查 touch/display 初始化是否报错；再查背光（BSP 默认开启）
+
+**装电池后补充**：重启 = PWR ≥6s 关机 → 点按 PWR 开机；可测电池电压/续航（AXP2101，§6.5）

@@ -244,7 +244,7 @@ static void render_eyes(void)
 {
     for(unsigned i = 0; i < 2; i++) {
         bool visible = s_pet.awake && (s_pet.blink_stage != 0 || s_pet.gaze_offset != 0 || s_pet.gaze_y != 0) && s_pet.eyes != NULL && i < s_pet.eyes->count;
-        lv_obj_set_flag(s_pet.eye_covers[i], LV_OBJ_FLAG_HIDDEN, !visible);
+        lv_obj_set_hidden(s_pet.eye_covers[i], !visible);
         if(!visible) continue;
         const eye_region_t *e = &s_pet.eyes->eyes[i];
         int x = s_pet.eye_direction < 0 ? 192 - e->x - e->w : e->x;
@@ -253,9 +253,9 @@ static void render_eyes(void)
         lv_obj_set_size(s_pet.eye_covers[i], e->w+(glance ? 4 : 0), e->h+(glance ? 4 : 0));
         lv_obj_set_style_bg_color(s_pet.eye_covers[i],lv_color_hex(palette_skin_color(e->x-2,e->y+e->h/2)),0);
         bool closed = s_pet.blink_stage == 2;
-        lv_obj_set_flag(s_pet.eye_glances[i], LV_OBJ_FLAG_HIDDEN, !glance);
-        lv_obj_set_flag(s_pet.eye_pupils[i], LV_OBJ_FLAG_HIDDEN, closed || glance);
-        lv_obj_set_flag(s_pet.eye_lines[i], LV_OBJ_FLAG_HIDDEN, !closed);
+        lv_obj_set_hidden(s_pet.eye_glances[i], !glance);
+        lv_obj_set_hidden(s_pet.eye_pupils[i], closed || glance);
+        lv_obj_set_hidden(s_pet.eye_lines[i], !closed);
         if(glance) {
             const lv_image_dsc_t *source=lv_img_get_src(s_pet.img);
             lv_image_dsc_t *crop=&s_pet.eye_glance_images[i];
@@ -288,7 +288,7 @@ static void render_eyes(void)
 static void refresh_side_portrait(void)
 {
     if(!s_pet.side_portrait) return;
-    lv_obj_add_flag(s_pet.wing, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_hidden(s_pet.wing, true);
     lv_img_set_src(s_pet.img,pet_color_image(side_bodies[s_pet.eye_direction<0][s_pet.mouth_stage]));
     s_pet.eyes=&side_body_eyes[s_pet.mouth_stage];
     render_eyes();
@@ -321,7 +321,7 @@ static void blink_timer_cb(lv_timer_t *timer)
 
 static void show_frame(unsigned frame, int direction)
 {
-    lv_obj_add_flag(s_pet.wing, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_hidden(s_pet.wing, true);
     s_pet.front_flapping=false;
     lv_obj_set_pos(s_pet.img,0,0);
     lv_image_set_rotation(s_pet.img,0);
@@ -329,7 +329,7 @@ static void show_frame(unsigned frame, int direction)
     lv_obj_set_size(s_pet.shadow,shadow_width,8);
     lv_obj_set_pos(s_pet.shadow,(192-shadow_width)/2,174);
     s_pet.side_portrait=false;
-    for(unsigned foot = 0; foot < 2; foot++) lv_obj_add_flag(s_pet.feet[foot], LV_OBJ_FLAG_HIDDEN);
+    for(unsigned foot = 0; foot < 2; foot++) lv_obj_set_hidden(s_pet.feet[foot], true);
     lv_img_set_src(s_pet.img,pet_color_image( frames[direction < 0][frame]));
     s_pet.front_base=(frame==0 || frame==3) ? pet_color_image(frames[direction<0][frame]) : NULL;
     s_pet.front_seated=frame==0;
@@ -343,7 +343,7 @@ static void show_frame(unsigned frame, int direction)
 static void show_wing_frame(unsigned frame,int direction)
 {
     s_pet.wing_frame=frame;
-    lv_obj_clear_flag(s_pet.wing, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_hidden(s_pet.wing, false);
     lv_img_set_src(s_pet.wing,wing_frame_material(wing_animation[direction<0][frame]));
     lv_obj_set_pos(s_pet.wing,direction<0 ? 109 : 19,74);
     lv_image_set_pivot(s_pet.wing,direction<0 ? 9 : 54,34);
@@ -369,7 +369,7 @@ static void show_walk(float distance, int direction)
         walk_foot_pose_t pose = walk_foot_pose(distance, foot);
         s_pet.foot_poses[foot] = pose;
         lv_obj_t *image = s_pet.feet[foot];
-        lv_obj_clear_flag(image, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_hidden(image, false);
         lv_img_set_src(image, pet_color_image(foot_images[direction < 0][foot]));
         int pivot_x = direction < 0 ? 30 : 18;
         int ankle_x = 96 + (int)lroundf(pose.x);
@@ -717,7 +717,7 @@ static void routine_timer_cb(lv_timer_t *timer)
 void pet_set_state(pet_state_t state)
 {
     if(s_pet.pet == NULL || s_pet.img == NULL) return;
-    lv_obj_add_flag(s_pet.wing, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_hidden(s_pet.wing, true);
     s_pet.front_flapping=false;
     lv_obj_set_pos(s_pet.img,0,0);
     lv_image_set_rotation(s_pet.img,0);
@@ -730,7 +730,7 @@ void pet_set_state(pet_state_t state)
     s_pet.calling = false;
     s_pet.mouth_stage = 0;
     s_pet.mouth = NULL;
-    for(unsigned foot = 0; foot < 2; foot++) lv_obj_add_flag(s_pet.feet[foot], LV_OBJ_FLAG_HIDDEN);
+    for(unsigned foot = 0; foot < 2; foot++) lv_obj_set_hidden(s_pet.feet[foot], true);
     s_pet.awake = state != PET_STATE_SLEEP;
     switch(state) {
         case PET_STATE_HUNGRY:
@@ -765,15 +765,15 @@ void pet_set_state(pet_state_t state)
 
 void pet_create(lv_obj_t *parent, lv_coord_t w, lv_coord_t h)
 {
-    lv_obj_clear_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollable(parent, false);
     scene_create_background(parent,w,h);
 
     lv_obj_t *pet = lv_obj_create(parent);
     lv_obj_remove_style_all(pet);
     lv_obj_set_size(pet, 192, 192);
     lv_obj_align(pet, LV_ALIGN_CENTER, 0, 50);
-    lv_obj_add_flag(pet, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_clear_flag(pet, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_clickable(pet, true);
+    lv_obj_set_scrollable(pet, false);
     lv_obj_add_event_cb(pet, pet_click_cb, LV_EVENT_CLICKED, NULL);
     s_pet.shadow=lv_obj_create(pet);
     lv_obj_remove_style_all(s_pet.shadow);
@@ -783,53 +783,53 @@ void pet_create(lv_obj_t *parent, lv_coord_t w, lv_coord_t h)
     lv_obj_set_style_shadow_color(s_pet.shadow,lv_color_hex(0x486E32),0);
     lv_obj_set_style_shadow_width(s_pet.shadow,12,0);
     lv_obj_set_style_shadow_opa(s_pet.shadow,12,0);
-    lv_obj_clear_flag(s_pet.shadow, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_clear_flag(s_pet.shadow, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_clickable(s_pet.shadow, false);
+    lv_obj_set_scrollable(s_pet.shadow, false);
     /* Far foot behind near foot, both beneath the unchanged body artwork. */
     for(int foot = 1; foot >= 0; foot--) {
         s_pet.feet[foot] = lv_img_create(pet);
         lv_img_set_src(s_pet.feet[foot], pet_color_image(foot_images[0][foot]));
-        lv_obj_clear_flag(s_pet.feet[foot], LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_clear_flag(s_pet.feet[foot], LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_clickable(s_pet.feet[foot], false);
+        lv_obj_set_scrollable(s_pet.feet[foot], false);
     }
     lv_obj_t *img = lv_img_create(pet);
     lv_img_set_src(img, pet_color_image(frames[0][0]));
     lv_obj_set_size(img,192,192); /* Transparent wing child bounds must not move the torso. */
     lv_obj_align(img, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_clear_flag(img, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_clickable(img, false);
     lv_obj_add_event_cb(pet, mouth_draw_cb, LV_EVENT_DRAW_POST_END, NULL);
     s_pet.wing=lv_img_create(img);
     lv_img_set_src(s_pet.wing,wing_animation[0][0]);
-    lv_obj_clear_flag(s_pet.wing, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_clear_flag(s_pet.wing, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_pet.wing, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_clickable(s_pet.wing, false);
+    lv_obj_set_scrollable(s_pet.wing, false);
+    lv_obj_set_hidden(s_pet.wing, true);
 
     for(unsigned i = 0; i < 2; i++) {
         lv_obj_t *cover = lv_obj_create(img);
         lv_obj_remove_style_all(cover);
         lv_obj_set_style_bg_opa(cover, LV_OPA_COVER, 0);
         lv_obj_set_style_radius(cover, LV_RADIUS_CIRCLE, 0);
-        lv_obj_clear_flag(cover, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_clear_flag(cover, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_clickable(cover, false);
+        lv_obj_set_scrollable(cover, false);
         s_pet.eye_covers[i] = cover;
         lv_obj_t *pupil = lv_obj_create(cover);
         lv_obj_remove_style_all(pupil);
         lv_obj_set_style_bg_color(pupil, lv_color_hex(0x382113), 0);
         lv_obj_set_style_bg_opa(pupil, LV_OPA_COVER, 0);
         lv_obj_set_style_radius(pupil, LV_RADIUS_CIRCLE, 0);
-        lv_obj_clear_flag(pupil, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_clickable(pupil, false);
         s_pet.eye_pupils[i] = pupil;
         lv_obj_t *line = lv_line_create(cover);
         lv_obj_set_pos(line, 0, 0);
         lv_obj_set_style_line_color(line, lv_color_hex(0x382113), 0);
         lv_obj_set_style_line_width(line, 2, 0);
         lv_obj_set_style_line_rounded(line, true, 0);
-        lv_obj_clear_flag(line, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_clickable(line, false);
         s_pet.eye_lines[i] = line;
         s_pet.eye_glances[i]=lv_img_create(cover);
-        lv_obj_clear_flag(s_pet.eye_glances[i], LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_clear_flag(s_pet.eye_glances[i], LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_add_flag(s_pet.eye_glances[i], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_clickable(s_pet.eye_glances[i], false);
+        lv_obj_set_scrollable(s_pet.eye_glances[i], false);
+        lv_obj_set_hidden(s_pet.eye_glances[i], true);
     }
 
     s_pet.pet = pet;
