@@ -35,6 +35,7 @@ typedef enum {
 
 typedef struct {
     lv_obj_t *pet;
+    lv_obj_t *jump;
     lv_obj_t *img;
     lv_obj_t *shadow;
     lv_obj_t *feet[2]; /* near/left and far/right keep their identities */
@@ -87,6 +88,58 @@ typedef struct {
 } pet_runtime_t;
 
 static pet_runtime_t s_pet;
+
+/* Breathing owns img Y compression and pet Y offset only.
+ * Happy hops use a separate parent so they cannot overwrite breathing. */
+static void breath_scale_y_cb(void *var, int32_t value)
+{
+    lv_obj_set_style_transform_scale_y(var, value, 0);
+}
+static void breath_y_cb(void *var, int32_t value)
+{
+    lv_obj_set_style_translate_y(var, value, 0);
+}
+static void stop_breathing_animation(lv_obj_t *pet, lv_obj_t *img)
+{
+    lv_anim_delete(img, breath_scale_y_cb);
+    lv_anim_delete(pet, breath_y_cb);
+    breath_scale_y_cb(img,256);
+    breath_y_cb(pet,0);
+}
+static void start_breathing_animation(lv_obj_t *pet, lv_obj_t *img)
+{
+    /* Preserve phase across quiet-state changes and happy clicks. */
+    if(lv_anim_get(img,breath_scale_y_cb)) return;
+    stop_breathing_animation(pet,img);
+    lv_obj_set_style_transform_pivot_x(img,96,0);
+    lv_obj_set_style_transform_pivot_y(img,170,0);
+    lv_anim_t scale;
+    lv_anim_init(&scale);
+    lv_anim_set_var(&scale,img);
+    lv_anim_set_exec_cb(&scale,breath_scale_y_cb);
+    lv_anim_set_values(&scale,256,253);
+    lv_anim_set_duration(&scale,1600);
+    lv_anim_set_reverse_duration(&scale,1600);
+    lv_anim_set_path_cb(&scale,lv_anim_path_ease_in_out);
+    lv_anim_set_repeat_count(&scale,LV_ANIM_REPEAT_INFINITE);
+    lv_anim_start(&scale);
+    lv_anim_t offset;
+    lv_anim_init(&offset);
+    lv_anim_set_var(&offset,pet);
+    lv_anim_set_exec_cb(&offset,breath_y_cb);
+    lv_anim_set_values(&offset,0,0);
+    lv_anim_set_duration(&offset,1600);
+    lv_anim_set_reverse_duration(&offset,1600);
+    lv_anim_set_path_cb(&offset,lv_anim_path_ease_in_out);
+    lv_anim_set_repeat_count(&offset,LV_ANIM_REPEAT_INFINITE);
+    lv_anim_start(&offset);
+}
+static void set_breathing(bool enabled)
+{
+    if(enabled)start_breathing_animation(s_pet.pet,s_pet.img);
+    else stop_breathing_animation(s_pet.pet,s_pet.img);
+}
+
 static const lv_image_dsc_t * const frames[2][12] = {
     { &pet_daily_right_0, &pet_daily_right_1, &pet_daily_right_2,
       &pet_daily_right_3, &pet_daily_right_4, &pet_daily_right_5,
@@ -165,23 +218,25 @@ static void mouth_draw_cb(lv_event_t *event)
     lv_area_t origin;
     lv_obj_get_coords(s_pet.img,&origin);
     int direction=s_pet.eye_direction<0 ? -1 : 1;
+    int scale_y=lv_obj_get_style_transform_scale_y(s_pet.img,0);
     lv_draw_rect_dsc_t fill;
     lv_draw_rect_dsc_init(&fill);
     fill.bg_opa=LV_OPA_COVER;
     for(unsigned i=0;i<m->count;i++) {
         const mouth_row_t *r=&m->rows[i];
+        int row_y=origin.y1+170+(int)lroundf((r->y-170)*scale_y/256.0f);
         int last=LV_MIN(r->x2,r->skin_x2);
         if(last>=r->x1) {
             int x1=direction<0 ? 191-last : r->x1;
             int x2=direction<0 ? 191-r->x1 : last;
             fill.bg_color=lv_color_hex(palette_skin_color(m->x-2,r->y));
-            lv_area_t a={origin.x1+x1,origin.y1+r->y,origin.x1+x2,origin.y1+r->y};
+            lv_area_t a={origin.x1+x1,row_y,origin.x1+x2,row_y};
             lv_draw_rect(layer,&fill,&a);
         }
         if(m->mode==2 && r->skin_x2>=r->x1 && r->skin_x2<=r->x2) {
             int x=direction<0 ? 191-r->skin_x2 : r->skin_x2;
             fill.bg_color=lv_color_hex(0xE99D1B);
-            lv_area_t a={origin.x1+x,origin.y1+r->y,origin.x1+x,origin.y1+r->y};
+            lv_area_t a={origin.x1+x,row_y,origin.x1+x,row_y};
             lv_draw_rect(layer,&fill,&a);
         }
     }
@@ -193,6 +248,9 @@ static void mouth_draw_cb(lv_event_t *event)
     lv_draw_image_dsc_t art;
     lv_draw_image_dsc_init(&art);
     art.src=pet_color_image(beak_images[direction<0][m->mode][s_pet.mouth_stage]);
+    art.scale_y=scale_y;
+    art.pivot.x=0;
+    art.pivot.y=170-(m->cy-10);
     lv_area_t a={cx-anchor,origin.y1+m->cy-10,cx-anchor+31,origin.y1+m->cy+25};
     lv_draw_image(layer,&art,&a);
 }
@@ -489,6 +547,7 @@ static void front_wing_tick(uint32_t elapsed)
 
 static void enter_phase(daily_phase_t phase)
 {
+    set_breathing(phase == REST || phase == STAND || phase == PAUSE);
     s_pet.phase = phase;
     s_pet.started = lv_tick_get();
     s_pet.head_turning=false;
@@ -586,14 +645,12 @@ static void update_tuft(void)
     x/=s_pet.eyes->count;
     y=y/s_pet.eyes->count+lv_obj_get_y(s_pet.img);
     tuft_motion_step(&s_pet.tuft,lv_tick_get(),x,y);
-    /* ---- 呆毛动感增强：呼吸微摆 + 蹦跳甩动 + 随机一阵风 ---- */
+    /* ---- 呆毛动感：蹦跳甩动 + 随机一阵风 ---- */
     static uint32_t wind_next=0, wind_started=0;
     static int wind_dir=1;
     uint32_t now=lv_tick_get();
     if(now>=wind_next) { wind_started=now; wind_next=now+lv_rand(8000,15000); wind_dir=lv_rand(0,1)?1:-1; }
     float drive=0;
-    /* 呼吸：3.2s 周期，呆毛随呼吸轻轻前后摆 */
-    drive += 0.30f * sinf(6.2831853f * (now%3200) / 3200.0f);
     /* 蹦跳开心：呆毛大幅甩动 */
     if(s_pet.happy) drive += 1.1f * sinf(6.2831853f * (now%600) / 600.0f);
     /* 随机一阵风：900ms 正弦包络吹歪再弹回 */
@@ -616,7 +673,7 @@ static void happy_tick(uint32_t elapsed)
     uint32_t hop = t % 600;
     float u = hop < 300 ? hop / 300.0f : (600 - hop) / 300.0f;
     int dy = -(int)(20.0f * u * u * u);
-    lv_obj_set_style_translate_y(s_pet.pet, dy, 0);
+    lv_obj_set_style_translate_y(s_pet.jump, dy, 0);
     /* 扇翅：每 700ms 一轮完整挥翅（身体贴图内嵌翅膀） */
     if(!s_pet.front_base) { show_frame(0, 1); s_pet.front_base = pet_color_image(frames[0][0]); s_pet.front_seated = true; }
     uint32_t wf_t = t % 700;
@@ -625,7 +682,7 @@ static void happy_tick(uint32_t elapsed)
     render_eyes(); update_mouth_mask();
     if(t >= 1500) {
         s_pet.happy = false;
-        lv_obj_set_style_translate_y(s_pet.pet, 0, 0);
+        lv_obj_set_style_translate_y(s_pet.jump, 0, 0);
         enter_phase(s_pet.phase); /* 从当前相位重新开始，不跳状态机 */
     }
 }
@@ -635,6 +692,7 @@ static void pet_click_cb(lv_event_t *event)
     (void)event;
     if(!s_pet.awake) return;          /* 睡觉不理会 */
     if(s_pet.happy) return;           /* 正在开心，忽略连点 */
+    set_breathing(true);
     s_pet.happy = true;
     s_pet.happy_started = lv_tick_get();
     s_pet.front_flapping = false;
@@ -710,6 +768,9 @@ static void routine_timer_cb(lv_timer_t *timer)
 void pet_set_state(pet_state_t state)
 {
     if(s_pet.pet == NULL || s_pet.img == NULL) return;
+    set_breathing(false);
+    s_pet.happy = false;
+    lv_obj_set_style_translate_y(s_pet.jump, 0, 0);
     lv_obj_set_hidden(s_pet.wing,true);
     s_pet.front_flapping=false;
     lv_obj_set_pos(s_pet.img,0,0);
@@ -727,6 +788,7 @@ void pet_set_state(pet_state_t state)
     s_pet.awake = state != PET_STATE_SLEEP;
     switch(state) {
         case PET_STATE_HUNGRY:
+            set_breathing(true);
             lv_img_set_src(s_pet.img,pet_color_image( &pet_chick_hungry));
             s_pet.eyes = &hungry_eyes;
             s_pet.mouth = NULL;
@@ -761,7 +823,14 @@ void pet_create(lv_obj_t *parent, lv_coord_t w, lv_coord_t h)
     lv_obj_set_scrollable(parent, false);
     scene_create_background(parent,w,h);
 
-    lv_obj_t *pet = lv_obj_create(parent);
+    s_pet.jump=lv_obj_create(parent);
+    lv_obj_remove_style_all(s_pet.jump);
+    lv_obj_set_size(s_pet.jump,w,h);
+    lv_obj_align(s_pet.jump,LV_ALIGN_TOP_LEFT,0,0);
+    lv_obj_set_scrollable(s_pet.jump,false);
+    lv_obj_set_clickable(s_pet.jump,false);
+    lv_obj_set_overflow_visible(s_pet.jump,true);
+    lv_obj_t *pet = lv_obj_create(s_pet.jump);
     lv_obj_remove_style_all(pet);
     lv_obj_set_size(pet, 192, 192);
     lv_obj_align(pet, LV_ALIGN_CENTER, 0, 50);
