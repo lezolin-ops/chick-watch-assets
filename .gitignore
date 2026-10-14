@@ -11,6 +11,8 @@
 # Firmware: keep only sources; build/component/backup artifacts are reproducible.
 /firmware/build/
 /build-clock-preview/
+/build-power/
+/build-power-baseline/
 /firmware/managed_components/
 /firmware/backup/
 /firmware/sdkconfig
@@ -18,3 +20,9 @@
 
 # Operating-system metadata.
 .DS_Store
+
+# Local archives and Python cache
+/lvgl-simulator.zip
+/firmware/sdkconfig.pre_psram_fix.bak
+__pycache__/
+*.pyc

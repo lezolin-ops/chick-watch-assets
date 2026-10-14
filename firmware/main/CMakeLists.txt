@@ -1,6 +1,29 @@
 idf_component_register(
-    SRCS main.c pet.c watch_clock.c
+    SRCS main.c pet.c watch_clock.c watch_home_clock.c watch_cartoon_68.c watch_wifi.c watch_settings.c watch_font_24.c watch_time_sync.c watch_power.c watch_battery_log.c watch_panel.c watch_idle_diag.c
     INCLUDE_DIRS .)
+
+option(WATCH_ENABLE_POWER_MANAGEMENT "Use watch power policy (OFF only for timed A/B comparison)" ON)
+option(WATCH_BATTERY_LOG_ENABLED "Low-rate rolling battery history for day-long observation" ON)
+target_compile_definitions(${COMPONENT_LIB} PRIVATE WATCH_BATTERY_LOG_ENABLED=$<BOOL:${WATCH_BATTERY_LOG_ENABLED}>)
+option(WATCH_OPT_DFS "Allow idle CPU frequency scaling" ON)
+option(WATCH_OPT_TICK "Replace periodic LVGL tick with monotonic clock" ON)
+option(WATCH_OPT_SCENE "Pause hidden cloud and wind work" ON)
+option(WATCH_OPT_SLEEP "Allow automatic light sleep while screen is black" ON)
+foreach(WATCH_OPT DFS TICK SCENE SLEEP)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE WATCH_OPT_${WATCH_OPT}=$<BOOL:${WATCH_OPT_${WATCH_OPT}}>)
+endforeach()
+set(WATCH_CPU_MIN_MHZ 80 CACHE STRING "Idle CPU frequency: 40 or 80 MHz")
+set(WATCH_CPU_MAX_MHZ 240 CACHE STRING "Busy CPU frequency: 80, 160 or 240 MHz")
+if(NOT WATCH_CPU_MIN_MHZ MATCHES "^(40|80)$" OR NOT WATCH_CPU_MAX_MHZ MATCHES "^(80|160|240)$")
+    message(FATAL_ERROR "Unsupported watch CPU frequency range")
+endif()
+target_compile_definitions(${COMPONENT_LIB} PRIVATE WATCH_CPU_MIN_MHZ=${WATCH_CPU_MIN_MHZ}
+    WATCH_CPU_MAX_MHZ=${WATCH_CPU_MAX_MHZ})
+if(WATCH_ENABLE_POWER_MANAGEMENT)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE WATCH_POWER_ENABLED=1)
+else()
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE WATCH_POWER_ENABLED=0)
+endif()
 
 # Raw images remain editable inputs; the lossless overlay is a build artifact.
 # Disable with `idf.py -D PET_PACK_RESOURCES=OFF build` for a raw A/B build.
@@ -31,3 +54,6 @@ endif()
 
 idf_component_get_property(LVGL_LIB lvgl__lvgl COMPONENT_LIB)
 target_compile_options(${LVGL_LIB} PRIVATE -DLV_LVGL_H_INCLUDE_SIMPLE)
+
+option(WATCH_IDLE_DIAGNOSTICS "Two read-only peripheral snapshots per boot" ON)
+target_compile_definitions(${COMPONENT_LIB} PRIVATE WATCH_IDLE_DIAGNOSTICS=$<BOOL:${WATCH_IDLE_DIAGNOSTICS}>)

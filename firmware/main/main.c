@@ -9,6 +9,10 @@
 #include "bsp/display.h"
 #include "pet.h"
 #include "watch_clock.h"
+#include "watch_settings.h"
+#include "watch_power.h"
+#include "watch_battery_log.h"
+#include "watch_idle_diag.h"
 
 static const char *TAG = "pet_watch";
 
@@ -29,5 +33,11 @@ void app_main(void)
     bsp_display_lock(0);
     pet_create(lv_screen_active(), 410, 502);
     watch_clock_create(lv_screen_active());
+    watch_settings_init();
+    err = watch_power_init();
+    if(err != ESP_OK) ESP_LOGW(TAG, "Power optimization unavailable: %s", esp_err_to_name(err));
+    err = watch_battery_log_init();
+    if(err != ESP_OK) ESP_LOGW(TAG, "Battery recording unavailable: %s", esp_err_to_name(err));
+    watch_idle_diag_snapshot(0);
     bsp_display_unlock();
 }

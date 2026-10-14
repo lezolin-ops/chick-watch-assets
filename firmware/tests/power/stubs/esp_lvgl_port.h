@@ -1,0 +1,3 @@
+#pragma once
+#include "esp_err.h"
+esp_err_t lvgl_port_stop(void);

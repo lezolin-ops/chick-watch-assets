@@ -1,0 +1,10 @@
+diff --git a/firmware/managed_components/waveshare__esp32_s3_touch_amoled_2_06/esp32_s3_touch_amoled_2_06.c b/firmware/managed_components/waveshare__esp32_s3_touch_amoled_2_06/esp32_s3_touch_amoled_2_06.c
+--- a/firmware/managed_components/waveshare__esp32_s3_touch_amoled_2_06/esp32_s3_touch_amoled_2_06.c
++++ b/firmware/managed_components/waveshare__esp32_s3_touch_amoled_2_06/esp32_s3_touch_amoled_2_06.c
+@@ -546,5 +546,5 @@
+         .flags = {
+-            .sw_rotate = true,
++            .sw_rotate = false, /* Fixed portrait UI: no extra internal rotation buffer. */
+             .buff_dma = true,   /* 2026-10-11 patch：缓冲放内部 SRAM，SPI DMA 直达，免 PSRAM→SRAM 拷贝（见 FIRMWARE.md §3.13） */
+ #if CONFIG_BSP_DISPLAY_LVGL_PSRAM
+             .buff_spiram = false,

@@ -1,5 +1,13 @@
 /* First AOD prototype: RTC clock, sparse black UI, touch wake, idle return. */
 #include "watch_clock.h"
+#include "watch_settings.h"
+#include "watch_home_clock.h"
+#include "watch_power.h"
+#include "watch_wifi.h"
+#include "watch_battery_log.h"
+#include "watch_pmu.h"
+#include "watch_panel.h"
+#include "watch_idle_diag.h"
 #include "pet.h"
 #include "bsp/esp-bsp.h"
 #include "bsp/display.h"
@@ -10,9 +18,11 @@
 #include <string.h>
 #include <time.h>
 #include <sys/time.h>
+#include <stdatomic.h>
 
 static lv_obj_t *s_pet_screen, *s_clock_screen, *s_black_screen, *s_time, *s_date, *s_power;
 static bool s_showing;
+static bool s_time_valid;
 static bool s_blanked;
 static uint32_t s_clock_entered;
 static int s_last_minute = -1;
@@ -25,6 +35,21 @@ static const char *TAG = "watch_clock";
 static int from_bcd(uint8_t n) { return (n >> 4) * 10 + (n & 15); }
 static uint8_t to_bcd(int n) { return ((n / 10) << 4) | (n % 10); }
 
+static atomic_bool s_network_time_pending;
+void watch_clock_network_time_ready(void) { atomic_store(&s_network_time_pending, true); }
+static void apply_network_time(void)
+{
+    if(!atomic_exchange(&s_network_time_pending, false)) return;
+    s_last_minute = -1;
+    s_time_valid = true;
+    time_t now = time(NULL); struct tm t; localtime_r(&now, &t);
+    if(!s_rtc || t.tm_year < 124 || t.tm_year > 199) return;
+    uint8_t data[] = {4, to_bcd(t.tm_sec), to_bcd(t.tm_min), to_bcd(t.tm_hour),
+        to_bcd(t.tm_mday), to_bcd(t.tm_wday), to_bcd(t.tm_mon+1), to_bcd(t.tm_year%100)};
+    esp_err_t err = i2c_master_transmit(s_rtc, data, sizeof(data), 100);
+    ESP_LOGI(TAG, "Network time RTC write: %s", esp_err_to_name(err));
+}
+
 /* Read-only AXP2101 monitoring; leave charging/voltage settings untouched.
  * Register meanings follow the official demo's bundled XPowersLib. */
 static void update_power(bool force)
@@ -33,20 +58,19 @@ static void update_power(bool force)
     if(!force && s_power_has_checked && now - s_power_checked < 5000) return;
     s_power_checked = now; s_power_has_checked = true;
     char text[64];
-    uint8_t reg = 0, status[2], percent = 255;
-    if(!s_pmu || i2c_master_transmit_receive(s_pmu, &reg, 1, status, 2, 100) != ESP_OK) {
+    watch_pmu_sample_t sample=watch_pmu_read(s_pmu,false);
+    uint8_t percent=sample.percent;
+    if(!sample.status_ok) {
         snprintf(text, sizeof(text), LV_SYMBOL_BATTERY_EMPTY " --%%");
-    } else if(!(status[0] & (1 << 3))) {
-        bool usb = (status[0] & (1 << 5)) && !(status[1] & (1 << 3));
-        snprintf(text, sizeof(text), "%s", usb ? "USB" : "NO BATTERY");
+    } else if(!sample.battery) {
+        snprintf(text, sizeof(text), "%s", sample.usb ? "USB" : "NO BATTERY");
     } else {
-        reg = 0xA4;
-        bool valid = i2c_master_transmit_receive(s_pmu, &reg, 1, &percent, 1, 100) == ESP_OK && percent <= 100;
+        bool valid=sample.percent_ok;
         const char *icon = !valid || percent < 10 ? LV_SYMBOL_BATTERY_EMPTY :
             percent < 35 ? LV_SYMBOL_BATTERY_1 : percent < 60 ? LV_SYMBOL_BATTERY_2 :
             percent < 90 ? LV_SYMBOL_BATTERY_3 : LV_SYMBOL_BATTERY_FULL;
-        bool charging = (status[1] >> 5) == 1;
-        bool full = (status[1] & 7) == 4;
+        bool charging = sample.charging;
+        bool full = sample.full;
         char value[8];
         if(valid) snprintf(value, sizeof(value), "%u%%", percent);
         else snprintf(value, sizeof(value), "--%%");
@@ -97,6 +121,7 @@ static void init_time(void)
             ESP_LOGW(TAG, "RTC initialized with build time (preview), result: %s", esp_err_to_name(err));
         }
     }
+    s_time_valid = valid;
     struct timeval tv = {.tv_sec = seed};
     settimeofday(&tv, NULL);
     ESP_LOGI(TAG, "time source: %s", valid ? "PCF85063" : "build time preview; needs calibration");
@@ -122,6 +147,8 @@ static void update_labels(void)
 
 static void show_clock(void)
 {
+    watch_power_set_blanked(false);
+    if(watch_panel_wake()!=ESP_OK){ESP_LOGW(TAG,"Panel wake failed; retry with a button");return;}
     s_showing = true; s_blanked = false; s_clock_entered = lv_tick_get();
     pet_set_paused(true); s_last_minute = -1;
     update_power(true); update_labels(); lv_screen_load(s_clock_screen);
@@ -131,10 +158,13 @@ static void wake_cb(lv_event_t *e)
 {
     (void)e;
     if(!s_showing) return;
+    watch_power_set_blanked(false);
+    if(watch_panel_wake()!=ESP_OK){ESP_LOGW(TAG,"Panel wake failed; retry with a button");return;}
     s_showing = false; s_blanked = false;
     lv_screen_load(s_pet_screen);
+    lv_obj_invalidate(s_pet_screen);
     lv_refr_now(NULL);
-    bsp_display_brightness_set(50); pet_set_paused(false);
+    bsp_display_brightness_set(watch_settings_brightness()); pet_set_paused(false);
     lv_display_trigger_activity(NULL);
 }
 /* Official bundled XPowersLib: INTEN2=0x41, INTSTS2=0x49,
@@ -148,26 +178,64 @@ static void key_cb(lv_timer_t *timer)
     if(i2c_master_transmit_receive(s_pmu, &reg, 1, &status, 1, 20) != ESP_OK || !(status & 8)) return;
     uint8_t clear[] = {0x49, 8};
     if(i2c_master_transmit(s_pmu, clear, sizeof(clear), 20) != ESP_OK) return;
+    if(watch_settings_active()) { watch_settings_exit(); return; }
     if(s_showing) wake_cb(NULL);
     else show_clock();
 }
 static void tick_cb(lv_timer_t *timer)
 {
     (void)timer;
-    if(s_blanked) return;
+    apply_network_time();
+    time_t now = time(NULL); struct tm t; localtime_r(&now, &t);
+    watch_home_clock_update(&t, s_time_valid);
+    unsigned mode=watch_settings_active()?BATLOG_SETTINGS:s_blanked?BATLOG_BLACK:s_showing?BATLOG_CLOCK:BATLOG_PET;
+    unsigned brightness=mode==BATLOG_BLACK?0:mode==BATLOG_CLOCK?10:watch_settings_brightness();
+    watch_battery_log_tick(s_pmu,mode,brightness,s_time_valid);
+    if(watch_settings_active()) return;
+    if(s_blanked) {
+        /* Retry if a user command occupied the queue at the transition.
+         * Reboot still performs startup connection/time sync; waking the
+         * screen leaves Wi-Fi off until enabled in Network settings. */
+        watch_power_try_stop_network();
+        return;
+    }
     if(s_showing) {
         if(lv_tick_get() - s_clock_entered >= 60000) {
-            /* Black pixels + zero AMOLED brightness, not CPU deep sleep.
-             * Keep PMU polling alive so the power key can wake the UI. */
+            /* Panel enters SLPIN at zero brightness; idle CPU may light-sleep.
+             * PMU polling and wake GPIOs retain the existing key behavior. */
             lv_screen_load(s_black_screen); lv_refr_now(NULL);
-            bsp_display_backlight_off(); s_blanked = true;
+            bsp_display_backlight_off();
+            esp_err_t panel_err=watch_panel_sleep();
+            if(panel_err!=ESP_OK)ESP_LOGW(TAG,"Panel sleep unavailable: %s",esp_err_to_name(panel_err));
+            watch_idle_diag_snapshot(1);
+            s_blanked = true;
+            watch_power_try_stop_network();
+            watch_power_set_blanked(true);
         } else { update_labels(); update_power(false); }
     }
     else if(lv_display_get_inactive_time(NULL) >= 15000) show_clock();
 }
+void watch_clock_settings_open(lv_obj_t *screen)
+{
+    watch_power_set_blanked(false);
+    if(watch_panel_wake()!=ESP_OK){ESP_LOGW(TAG,"Panel wake failed; retry with a button");return;}
+    pet_set_paused(true);
+    lv_screen_load(screen); lv_obj_invalidate(screen); lv_refr_now(NULL);
+    bsp_display_brightness_set(watch_settings_brightness());
+    lv_display_trigger_activity(NULL);
+}
+void watch_clock_settings_close(void)
+{
+    s_showing = true; wake_cb(NULL);
+}
 void watch_clock_create(lv_obj_t *pet_screen)
 {
+    esp_err_t panel_err=watch_panel_init();
+    if(panel_err!=ESP_OK)ESP_LOGW(TAG,"Panel sleep setup unavailable: %s",esp_err_to_name(panel_err));
     init_time(); s_pet_screen = pet_screen;
+    watch_home_clock_create(pet_screen);
+    time_t now = time(NULL); struct tm t; localtime_r(&now, &t);
+    watch_home_clock_update(&t, s_time_valid);
     s_clock_screen = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(s_clock_screen, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(s_clock_screen, LV_OPA_COVER, 0);

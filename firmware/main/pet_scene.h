@@ -21,11 +21,31 @@ static struct {
     int width,direction;
     float strength;
     bool gust;
+    bool paused;
+    uint32_t paused_at;
     const lv_image_dsc_t *plants_source[2][2];
     lv_image_dsc_t plants_image[2][2];
     uint8_t *plants_pixels[2][2];
     int last_bend[2][2];
 } pet_scene;
+
+static void scene_set_paused(bool paused)
+{
+    if(paused == pet_scene.paused) return;
+    if(paused) pet_scene.paused_at = lv_tick_get();
+    else {
+        uint32_t elapsed = lv_tick_elaps(pet_scene.paused_at);
+        pet_scene.cloud_started += elapsed;
+        pet_scene.wind_started += elapsed;
+    }
+    pet_scene.paused = paused;
+    lv_timer_t *timers[] = {pet_scene.cloud_timer, pet_scene.wind_timer};
+    for(unsigned i = 0; i < 2; i++) {
+        if(!timers[i]) continue;
+        if(paused) lv_timer_pause(timers[i]);
+        else lv_timer_resume(timers[i]);
+    }
+}
 
 static void scene_bend_plant(unsigned layer,unsigned half,int bend)
 {

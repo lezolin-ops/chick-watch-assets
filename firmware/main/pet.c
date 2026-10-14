@@ -4,6 +4,7 @@
  * tuft/walk_expression 缓冲落进内部 DRAM，链接溢出 152KB）。 */
 #include "pet_platform.h"
 #include "pet.h"
+#include "watch_power.h"
 #if PET_USE_PACKED_ASSETS
 #include "pet_packed_assets.c"
 #endif
@@ -734,6 +735,7 @@ static void routine_timer_cb(lv_timer_t *timer)
 
 void pet_set_paused(bool paused)
 {
+    if(WATCH_POWER_ENABLED && WATCH_OPT_SCENE) scene_set_paused(paused);
     lv_timer_t *timers[] = {s_pet.timer, s_pet.blink_timer, s_pet.mouth_timer};
     for(unsigned i = 0; i < 3; i++) {
         if(!timers[i]) continue;

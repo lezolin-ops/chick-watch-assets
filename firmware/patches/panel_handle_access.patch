@@ -1,0 +1,30 @@
+--- a/firmware/managed_components/waveshare__esp32_s3_touch_amoled_2_06/esp32_s3_touch_amoled_2_06.c
++++ b/firmware/managed_components/waveshare__esp32_s3_touch_amoled_2_06/esp32_s3_touch_amoled_2_06.c
+@@ -647,3 +647,10 @@
+ {
+     lvgl_port_unlock();
+ }
++
++/* Project extension: borrow existing handles; caller holds display lock. */
++esp_err_t bsp_display_get_panel_io(esp_lcd_panel_handle_t *panel,esp_lcd_panel_io_handle_t *io)
++{
++    if(!panel||!io||!panel_handle||!io_handle)return ESP_ERR_INVALID_STATE;
++    *panel=panel_handle;*io=io_handle;return ESP_OK;
++}
+--- a/firmware/managed_components/waveshare__esp32_s3_touch_amoled_2_06/include/bsp/display.h
++++ b/firmware/managed_components/waveshare__esp32_s3_touch_amoled_2_06/include/bsp/display.h
+@@ -19,9 +19,14 @@
+ #define BSP_LCD_H_RES              (410)
+ #define BSP_LCD_V_RES              (502)
+ 
++#include "esp_lcd_panel_io.h"
++#include "esp_err.h"
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
++
++/* Borrow existing display handles. Never delete; hold BSP display lock. */
++esp_err_t bsp_display_get_panel_io(esp_lcd_panel_handle_t *panel,esp_lcd_panel_io_handle_t *io);
+ 
+ /**
+  * @brief BSP display configuration structure

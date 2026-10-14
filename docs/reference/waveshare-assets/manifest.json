@@ -1,0 +1,50 @@
+{
+  "retrieved_date": "2026-10-14 Asia/Shanghai",
+  "repository_ref": "main (mutable)",
+  "note": "Exact local versions are identified by SHA256; original copyright/license retained. AXP datasheet copied from existing official example checkout, source URL listed for provenance.",
+  "assets": [
+    {
+      "file": "schematic-v1.0.pdf",
+      "source_url": "https://raw.githubusercontent.com/waveshareteam/ESP32-S3-Touch-AMOLED-2.06/main/Schematic/ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0.pdf",
+      "bytes": 1347665,
+      "sha256": "6d531fb458863c666210c92294a07204d675bcb7997a54fc219d92fadbbacf9d"
+    },
+    {
+      "file": "axp2101-datasheet-v1.0.pdf",
+      "source_url": "https://raw.githubusercontent.com/waveshareteam/ESP32-S3-Touch-AMOLED-2.06/main/examples/arduino/libraries/XPowersLib/datasheet/AXP2101_Datasheet_V1.0_en.pdf",
+      "bytes": 1586117,
+      "sha256": "421011983c56034e1074d28e22826e8414d55f8dc5344cd67967942e3bc8b8d9"
+    },
+    {
+      "file": "XPowersLib.h",
+      "source_url": "https://raw.githubusercontent.com/waveshareteam/ESP32-S3-Touch-AMOLED-2.06/main/examples/esp-idf/01_AXP2101/components/XPowersLib/src/XPowersLib.h",
+      "bytes": 670,
+      "sha256": "30dce79a0594452ab1cd74c86cd8ca70829b517cc453cd4c12f5c9b5080af5c4"
+    },
+    {
+      "file": "XPowersLibInterface.cpp",
+      "source_url": "https://raw.githubusercontent.com/waveshareteam/ESP32-S3-Touch-AMOLED-2.06/main/examples/esp-idf/01_AXP2101/components/XPowersLib/src/XPowersLibInterface.cpp",
+      "bytes": 6612,
+      "sha256": "87af4ae5ec20d8196f25bb85f35ba4364c740bf92d4367362969c9274415f43f"
+    },
+    {
+      "file": "XPowersLibInterface.hpp",
+      "source_url": "https://raw.githubusercontent.com/waveshareteam/ESP32-S3-Touch-AMOLED-2.06/main/examples/esp-idf/01_AXP2101/components/XPowersLib/src/XPowersLibInterface.hpp",
+      "bytes": 19941,
+      "sha256": "c6479a1037ebcb47b341b351ba6035320412dbd89a6a44b6949b6505c65feca4"
+    },
+    {
+      "file": "port_axp2101.cpp",
+      "source_url": "https://raw.githubusercontent.com/waveshareteam/ESP32-S3-Touch-AMOLED-2.06/main/examples/esp-idf/01_AXP2101/main/port_axp2101.cpp",
+      "bytes": 7563,
+      "sha256": "a79ea51095932b9defcee66aa6cbc18cf7645d29bbd759e80d16a267552e823f"
+    },
+    {
+      "file": "co5300-datasheet-v0.01.pdf",
+      "source_url": "https://files.waveshare.com/wiki/common/Co5300_Datasheet.pdf",
+      "bytes": 13236092,
+      "sha256": "2ad0461aec31aa046e2661f52f43e9c36b36218c58c53f07217c73bef7d710c6",
+      "read_scope": "pp143-146 sleep-in/out and pp155-158 display-off/on; not whole datasheet"
+    }
+  ]
+}
