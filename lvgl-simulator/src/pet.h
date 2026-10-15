@@ -23,6 +23,11 @@ typedef enum {
     PET_STATE_SLEEP,
 } pet_state_t;
 
+typedef enum { SLEEP_NONE, SLEEP_ENTER, SLEEP_LOOP, SLEEP_EXIT } pet_sleep_phase_t;
+void pet_enter_sleep(void);
+void pet_exit_sleep(void);
+pet_sleep_phase_t pet_get_sleep_phase(void);
+
 /**
  * @brief 创建电子宠物主界面
  * @param parent 父对象（模拟器传 lv_screen_active()，真机同样）
@@ -33,6 +38,9 @@ void pet_create(lv_obj_t *parent, lv_coord_t w, lv_coord_t h);
 
 /** @brief IDLE resumes daily behavior; HUNGRY/SLEEP pause it until explicitly changed. */
 void pet_set_state(pet_state_t state);
+
+/** Play a 1600ms one-shot response; false while busy, sleeping or cooling down (2500ms). */
+bool pet_play_happy_once(void);
 
 #ifdef __cplusplus
 }

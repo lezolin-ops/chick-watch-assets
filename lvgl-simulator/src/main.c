@@ -13,6 +13,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #ifdef _MSC_VER
   #include <Windows.h>
 #else
@@ -52,6 +53,25 @@
 
 #if LV_USE_OS != LV_OS_FREERTOS
 
+/* Explicit visual demo: quiet awake -> enter -> quiet sleep -> exit, repeat. */
+static void sleep_demo_cb(lv_timer_t *timer)
+{
+  (void)timer;
+  static unsigned stage;
+  static uint32_t since;
+  static bool initialized;
+  if(!initialized) { initialized=true;since=lv_tick_get(); }
+  pet_sleep_phase_t phase=pet_get_sleep_phase();
+  if(stage==0 && lv_tick_elaps(since)>=3000) {
+    pet_enter_sleep();stage=1;
+  } else if(stage==1 && phase==SLEEP_LOOP) {
+    since=lv_tick_get();stage=2;
+  } else if(stage==2 && lv_tick_elaps(since)>=5000) {
+    pet_exit_sleep();stage=3;
+  } else if(stage==3 && phase==SLEEP_NONE) {
+    since=lv_tick_get();stage=0;
+  }
+}
 int main(int argc, char **argv)
 {
   (void)argc; /*Unused*/
@@ -65,6 +85,7 @@ int main(int argc, char **argv)
 
   /* 启动电子宠物主界面（清醒日常循环 + 触摸开心） */
   pet_create(lv_screen_active(), 410, 502);
+  if(argc>1 && strcmp(argv[1],"--sleep-demo")==0) lv_timer_create(sleep_demo_cb,100,NULL);
   /* Lottie 演示版（lv_lottie + ThorVG）备用：改调 lottie_demo_create 即可切换 */
   //lottie_demo_create(lv_screen_active(), 410, 502);
 

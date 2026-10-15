@@ -1,3 +1,6 @@
+#include <fcntl.h>
+#include <unistd.h>
+#include "driver/usb_serial_jtag.h"
 /* First AOD prototype: RTC clock, sparse black UI, touch wake, idle return. */
 #include "watch_clock.h"
 #include "watch_settings.h"
@@ -182,9 +185,44 @@ static void key_cb(lv_timer_t *timer)
     if(s_showing) wake_cb(NULL);
     else show_clock();
 }
+/* Explicit USB commands only; no automatic pet schedule or touch wake. */
+static void pet_manual_poll(void)
+{
+    static bool overflow;
+    static int usb_fd=-1;
+    static char line[32];static unsigned used;
+    if(!usb_serial_jtag_is_connected()) {used=0;overflow=false;return;}
+    if(usb_fd<0) {
+        /* USB is the secondary console; stdin belongs to UART0. */
+        usb_fd=open("/dev/secondary",O_RDONLY|O_NONBLOCK);
+        if(usb_fd<0) return;
+    }
+    char ch;
+    for(unsigned n=0;n<64 && read(usb_fd,&ch,1)==1;n++) {
+        if(ch=='\r' || ch=='\n') {
+            line[used]=0;
+            bool enter=!overflow && strcmp(line,"PET_SLEEP")==0;
+            bool leave=!overflow && strcmp(line,"PET_WAKE")==0;
+            if(enter || leave) {
+                if(watch_settings_active()) ESP_LOGI("pet_sleep","close settings before manual sleep control");
+                else {
+                    if(s_showing) wake_cb(NULL);
+                    if(enter) pet_enter_sleep();else pet_exit_sleep();
+                    lv_display_trigger_activity(NULL);
+                    ESP_LOGI("pet_sleep","manual %s; phase=%d",enter?"enter":"exit",pet_get_sleep_phase());
+                }
+            } else if(!overflow && strcmp(line,"PET_SLEEP_STATUS")==0)
+                ESP_LOGI("pet_sleep","phase=%d",pet_get_sleep_phase());
+            used=0;overflow=false;
+        } else if(!overflow) {
+            if(used<sizeof(line)-1) line[used++]=ch;else overflow=true;
+        }
+    }
+}
 static void tick_cb(lv_timer_t *timer)
 {
     (void)timer;
+    pet_manual_poll();
     apply_network_time();
     time_t now = time(NULL); struct tm t; localtime_r(&now, &t);
     watch_home_clock_update(&t, s_time_valid);
