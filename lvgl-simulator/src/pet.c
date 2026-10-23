@@ -18,6 +18,10 @@
 #include "pet_side_mouth_bodies.c"
 #include "pet_side_body_eyes.h"
 #include <string.h>
+#include <stdio.h>
+#include "pet_happy_frames.c" /* simulator preview only: AI happy keyframes */
+#include "pet_happy_seq.c" /* simulator preview only: AI smooth sequence frames (not firmware) */
+#include "pet_angry_seq.c" /* simulator preview only: angry keyframe loop (not firmware) */
 #include "pet_material_palette.h"
 #include "pet_wing_frames.c"
 #include "pet_wing_animation.h"
@@ -684,6 +688,12 @@ static void update_tuft(void)
     if(s_pet.tuft.bend!=0) lv_obj_invalidate(s_pet.img);
 }
 
+/* Preview workbench: freeze daily behavior; only the selected demo action drives. */
+static bool demo_mode = false;
+/* Isolated layer for AI keyframes, sibling of the legacy character body. */
+static lv_obj_t *s_demo_img = NULL;
+static const lv_image_dsc_t * const ai_seq[];
+
 /* Click dispatches one owned timeline; no independent click-bounce animation. */
 static void happy_progress_cb(void *var, int32_t value);
 static void happy_finish(void)
@@ -700,8 +710,45 @@ static void happy_finish(void)
     lv_obj_set_style_transform_scale_y(s_pet.pet,256,0);
     lv_obj_set_style_translate_y(s_pet.jump,0,0);
     render_eyes();
+    if(demo_mode) {
+        /* Hold the sequence's own first frame through the rest gap; legacy
+         * body stays hidden, so only AI frames are ever shown. */
+        lv_img_set_src(s_demo_img, ai_seq[0]);
+        lv_obj_set_style_translate_y(s_demo_img,0,0);
+        lv_obj_invalidate(s_demo_img);
+    }
     if(s_pet.happy_timer_paused) lv_timer_pause(s_pet.timer);
 
+}
+
+/* AI keyframe slots for the simulator workbench; pose squash is baked into
+ * the images, so the demo only adds the vertical hop, not a second squash. */
+static const lv_image_dsc_t * const happy_frames[] = {
+    &pet_happy_0, &pet_happy_1, &pet_happy_2, &pet_happy_3, &pet_happy_4, &pet_happy_5
+};
+
+/* AI smooth sequence: jump height and smile transition are baked into each
+ * frame, so the demo must NOT add its own vertical translate (would double-hop). */
+#define AI_SEQ_N    30
+#define AI_SEQ_MS   5000u
+static const lv_image_dsc_t * const ai_seq[] = {
+    &ai_happy_0, &ai_happy_1, &ai_happy_2, &ai_happy_3, &ai_happy_4,
+    &ai_happy_5, &ai_happy_6, &ai_happy_7, &ai_happy_8, &ai_happy_9,
+    &ai_happy_10, &ai_happy_11, &ai_happy_12, &ai_happy_13, &ai_happy_14,
+    &ai_happy_15, &ai_happy_16, &ai_happy_17, &ai_happy_18, &ai_happy_19,
+    &ai_happy_20, &ai_happy_21, &ai_happy_22, &ai_happy_23, &ai_happy_24,
+    &ai_happy_25, &ai_happy_26, &ai_happy_27, &ai_happy_28, &ai_happy_29
+};
+static int happy_last_frame = -1;
+static int happy_frame_for_t(uint32_t t)
+{
+    /* Prep -> takeoff -> peak -> landing -> reset; the F5 small-hop slot (4)
+     * is intentionally skipped: no second bounce after the main jump. */
+    if(t < 150)  return 0;
+    if(t < 250)  return 1;
+    if(t < 700)  return 2;
+    if(t < 950)  return 3;
+    return 5;
 }
 
 static void happy_progress_cb(void *var, int32_t value)
@@ -709,7 +756,22 @@ static void happy_progress_cb(void *var, int32_t value)
     (void)var;
     if(!s_pet.happy) return;
     uint32_t t=(uint32_t)value;
-    if(t>=1600) { happy_finish(); return; }
+    uint32_t run_ms = demo_mode ? AI_SEQ_MS : 1600u;
+    if(t>=run_ms) { happy_finish(); return; }
+
+    if(demo_mode) {
+        /* AI smooth sequence: pick frame by time; jump height and smile are
+         * baked in, so no programmatic translate_y here (avoids double-hop). */
+        uint32_t ft = t>=AI_SEQ_MS ? AI_SEQ_MS-1 : t;
+        int idx = (int)(ft * AI_SEQ_N / AI_SEQ_MS);
+        if(idx!=happy_last_frame) {
+            happy_last_frame=idx;
+            lv_img_set_src(s_demo_img, ai_seq[idx]);
+            lv_obj_invalidate(s_demo_img);
+        }
+        return;
+    }
+
     /* Hold a happy face through both hops and landing, then open the eyes. */
     s_pet.happy_smiling=t>=150 && t<1400;
     s_pet.blink_stage=t<40 ? 1 : t<100 ? 2 : t<150 ? 1 : 0;
@@ -735,27 +797,91 @@ static void happy_progress_cb(void *var, int32_t value)
     render_eyes();
 }
 
+/* Preview workbench: when on, daily phase/walk/blink/mouth are frozen;
+ * only the selected demo action (e.g. happy) drives the character. */
+
+/* Shared start of the 1600ms happy timeline; callers own their own guards. */
+static bool begin_happy(void)
+{
+    lv_obj_set_style_transform_pivot_x(s_pet.pet,96,0);
+    lv_obj_set_style_transform_pivot_y(s_pet.pet,170,0);
+    s_pet.happy_timer_paused=lv_timer_get_paused(s_pet.timer);
+    s_pet.happy_blink_stage=s_pet.blink_stage;
+    s_pet.happy=true;
+    s_pet.happy_last=s_pet.happy_started=lv_tick_get();
+    if(demo_mode) {
+        happy_last_frame=-1;
+        lv_obj_set_hidden(s_pet.pet,true);       /* hide legacy body entirely */
+        lv_obj_set_hidden(s_demo_img,false);
+        lv_img_set_src(s_demo_img, ai_seq[0]);
+        lv_obj_set_style_translate_y(s_demo_img,0,0);
+        lv_obj_invalidate(s_demo_img);
+    }
+    if(!demo_mode) lv_timer_resume(s_pet.timer);
+    uint32_t run_ms = demo_mode ? AI_SEQ_MS : 1600u;
+    lv_anim_t response;
+    lv_anim_init(&response);
+    lv_anim_set_var(&response,s_pet.jump);
+    lv_anim_set_exec_cb(&response,happy_progress_cb);
+    lv_anim_set_values(&response,0,(int32_t)run_ms);
+    lv_anim_set_duration(&response,run_ms);
+    lv_anim_set_path_cb(&response,lv_anim_path_linear);
+    lv_anim_start(&response);
+    return true;
+}
+
 bool pet_play_happy_once(void)
 {
     if(!s_pet.pet || sleep_phase!=SLEEP_NONE || !s_pet.awake || s_pet.happy) return false;
     if(s_pet.happy_used && lv_tick_elaps(s_pet.happy_last)<2500) return false;
 
-    lv_obj_set_style_transform_pivot_x(s_pet.pet,96,0);
-    lv_obj_set_style_transform_pivot_y(s_pet.pet,170,0);
-    s_pet.happy_timer_paused=lv_timer_get_paused(s_pet.timer);
-    s_pet.happy_blink_stage=s_pet.blink_stage;
-    s_pet.happy=true;s_pet.happy_used=true;
-    s_pet.happy_last=s_pet.happy_started=lv_tick_get();
-    lv_timer_resume(s_pet.timer);
-    lv_anim_t response;
-    lv_anim_init(&response);
-    lv_anim_set_var(&response,s_pet.jump);
-    lv_anim_set_exec_cb(&response,happy_progress_cb);
-    lv_anim_set_values(&response,0,1600);
-    lv_anim_set_duration(&response,1600);
-    lv_anim_set_path_cb(&response,lv_anim_path_linear);
-    lv_anim_start(&response);
-    return true;
+    s_pet.happy_used=true;
+    return begin_happy();
+}
+
+/* Simulator preview only: force-loop happy with a gap, bypassing the 2500ms
+ * cooldown. Not wired into firmware; driven by main.c's --happy-demo timer. */
+void pet_happy_demo_tick(uint32_t gap_ms)
+{
+    static bool armed;
+    static uint32_t since;
+    if(!armed){ armed=true; since=lv_tick_get(); }
+    if(s_pet.happy) return;                 /* let the current run finish */
+    if(lv_tick_elaps(since)<gap_ms) return; /* rest gap between runs */
+    if(!s_pet.pet || sleep_phase!=SLEEP_NONE || !s_pet.awake) return;
+    begin_happy();
+    since=lv_tick_get();
+}
+
+/* Simulator preview only: loop the angry keyframe sequence with per-frame
+ * holds and a rest gap. Programmatic hold only; no AI redraw between frames.
+ * Not wired into firmware; driven by main.c's --angry-demo timer. */
+static const lv_image_dsc_t * const angry_seq[] = {
+    &ai_angry_0, &ai_angry_1, &ai_angry_2, &ai_angry_3, &ai_angry_4, &ai_angry_5
+};
+/* A1 起气 / A2 小喊 / A3 大怒 / S1 提脚 / S2 踩下 / A4 收势 (ms holds) */
+static const uint16_t angry_hold_ms[] = {660, 660, 490, 320, 410, 660};
+static int angry_i = -1;
+static uint32_t angry_at = 0;
+
+void pet_angry_demo_tick(uint32_t gap_ms)
+{
+    if(!s_demo_img) return;
+    uint32_t now = lv_tick_get();
+    if(angry_i < 0) {
+        angry_i = 0;
+        angry_at = now;
+        lv_img_set_src(s_demo_img, angry_seq[0]);
+        lv_obj_invalidate(s_demo_img);
+        return;
+    }
+    uint32_t el = lv_tick_elaps(angry_at);
+    uint32_t budget = (angry_i == 5) ? (angry_hold_ms[5] + gap_ms) : angry_hold_ms[angry_i];
+    if(el < budget) return;
+    angry_i = (angry_i == 5) ? 0 : angry_i + 1;
+    angry_at = now;
+    lv_img_set_src(s_demo_img, angry_seq[angry_i]);
+    lv_obj_invalidate(s_demo_img);
 }
 
 static void pet_click_cb(lv_event_t *event)
@@ -764,10 +890,40 @@ static void pet_click_cb(lv_event_t *event)
     pet_play_happy_once();
 }
 
+void pet_set_demo_mode(bool on)
+{
+    demo_mode = on;
+    if(!s_pet.pet) return;
+    if(on) {
+        lv_timer_pause(s_pet.timer);
+        lv_timer_pause(s_pet.blink_timer);
+        lv_timer_pause(s_pet.mouth_timer);
+        s_pet.happy = false;
+        s_pet.happy_smiling = false;
+        s_pet.x = 0;
+        lv_obj_set_style_translate_x(s_pet.pet, 0, 0);
+        lv_obj_set_style_translate_y(s_pet.jump, 0, 0);
+        lv_obj_set_style_transform_scale_x(s_pet.pet, 256, 0);
+        lv_obj_set_style_transform_scale_y(s_pet.pet, 256, 0);
+        /* Loop only the AI sequence: show its own first frame on entry, never
+         * the legacy base or a separate F1 rest frame (avoids a cut/pop). */
+        lv_obj_set_hidden(s_pet.pet, true);
+        lv_obj_set_hidden(s_demo_img, false);
+        lv_img_set_src(s_demo_img, ai_seq[0]);
+        lv_obj_set_style_translate_y(s_demo_img, 0, 0);
+        lv_obj_invalidate(s_demo_img);
+    } else {
+        lv_timer_resume(s_pet.timer);
+        lv_timer_resume(s_pet.blink_timer);
+        lv_timer_resume(s_pet.mouth_timer);
+    }
+}
+
 static void routine_timer_cb(lv_timer_t *timer)
 {
     (void)timer;
     if(sleep_phase!=SLEEP_NONE) return;
+    if(demo_mode) return; /* freeze daily behavior; AI frames are driven by happy_progress_cb */
     uint32_t elapsed = lv_tick_elaps(s_pet.started);
     if(s_pet.happy) { update_tuft(); return; }
     uint32_t progress = LV_MIN(elapsed, s_pet.duration);
@@ -1144,6 +1300,14 @@ void pet_create(lv_obj_t *parent, lv_coord_t w, lv_coord_t h)
 
     s_pet.pet = pet;
     s_pet.img = img;
+    /* Isolated AI-sequence layer, same spot as the legacy body; hidden by default. */
+    s_demo_img = lv_img_create(s_pet.jump);
+    lv_obj_remove_style_all(s_demo_img);
+    lv_obj_set_size(s_demo_img, 192, 192);
+    lv_obj_align(s_demo_img, LV_ALIGN_CENTER, 0, 50);
+    lv_obj_set_clickable(s_demo_img, false);
+    lv_obj_set_scrollable(s_demo_img, false);
+    lv_obj_set_hidden(s_demo_img, true);
     s_pet.x = 0;
     s_pet.timer = lv_timer_create(routine_timer_cb, 20, NULL);
     s_pet.blink_started = lv_tick_get();

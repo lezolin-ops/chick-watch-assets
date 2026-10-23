@@ -8,7 +8,7 @@
 
 新增 BOOT 设置入口、手表扫描并直接输入 Wi-Fi 密码、成功保存与重启自动重连；支持全屏 QWERTY、大小写/数字/额外符号、按键放大、删除、密码显隐。亮度持久化暂限10–50%；OTA 仅保留未接入入口。Flash容量配置已与实测统一为32MB，现有分区布局不变。
 
-固件镜像约3.79MiB（加入联网组件）；ESP-IDF编译与真实LVGL模拟交互/渲染验证通过，实际联网待验收。实现依据、限制、步骤及测试见 `WIFI_SETTINGS.md`。刷写前备份路径 `backup/pre_wifi_flash_20261011.bin`（备份及刷写完成情况以本次记录后续核验为准）。
+固件镜像约3.79MiB（加入联网组件）；ESP-IDF编译与真实LVGL模拟交互/渲染验证通过，实际联网待验收。实现依据、限制、步骤及测试见 `WIFI_SETTINGS.md`。刷写前备份路径 `backup/pet_watch_full_v0.1.3_20261011_pre-wifi-flash.bin`（备份及刷写完成情况以本次记录后续核验为准）。
 
 2026-10-12核验：前16MiB备份已完成；首次Wi-Fi镜像刷写哈希通过，但启动在显示驱动的旋转缓冲分配失败后发生InstrFetchProhibited并反复重启。修复为固定竖屏关闭 `.sw_rotate` 的多余内部缓冲（`patches/fixed_portrait_memory.patch`），并开启 `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP`、关闭Wi-Fi IRAM/RX IRAM优化。修复版3972592字节已编译；再次刷写时USB串口消失，修复尚未进入设备，必须重新连接后刷写并验证启动，不得标记真机验收通过。
 
@@ -91,9 +91,9 @@ idf.py -p /dev/cu.usbmodem1101 flash monitor   # 烧录+串口日志
 ```bash
 python3 ~/esp/esp-idf-5.4/components/esptool_py/esptool/esptool.py \
   --chip esp32s3 -p /dev/cu.usbmodem1101 -b 460800 \
-  read_flash 0x0 0x1000000 firmware/backup/factory_flash_16MB.bin
+  read_flash 0x0 0x1000000 firmware/backup/pet_watch_full_v0.0.0_20261011_factory.bin
 ```
-- ✅ 已完成：`firmware/backup/factory_flash_16MB.bin`（16MB 全量，恢复出厂用它写回）
+- ✅ 已完成：`firmware/backup/pet_watch_full_v0.0.0_20261011_factory.bin`（16MB 全量，恢复出厂用它写回）
 - 防砖原理：ROM bootloader + USB-Serial-JTAG 在芯片内部，刷坏也能按住 BOOT 进下载模式重刷；正常 `idf.py flash` 不碰 efuse，不会真砖
 
 ### 3.10 LVGL 升版 9.5.0 → 9.6.0（与模拟器统一版本，2026-10-11）
@@ -129,7 +129,7 @@ python3 ~/esp/esp-idf-5.4/components/esptool_py/esptool/esptool.py \
 - **配置核验**：`sdkconfig.defaults` 中写了 `CONFIG_BSP_DISPLAY_LVGL_FULL_REFRESH=y`，但它依赖 RGB 抗撕裂选项，实际 `sdkconfig`/生成头文件没有启用。因此此前“全刷新已消除灰线”的注释不是实测结论。本次不是靠启用全刷新修好的。
 - **构建与烧录**：ESP-IDF 5.4.2 增量构建通过；新镜像 `0x8a8400` 字节，10M 应用分区仍有约 13% 余量。通过 `idf.py -p /dev/cu.usbmodem1101 -b 460800 app-flash` 仅更新 `0x10000` 应用分区，保留 bootloader、分区表及 NVS。
 - **验收**：用户刷入后明确回复“正常了”，确认灰线已消失。触摸、长时间稳定性、功耗不因此自动视为已验收。
-- **回退备份**：旧项目固件 `firmware/backup/pet_watch_before_qspi_fix_20261011.bin`；原出厂备份 `firmware/backup/factory_flash_16MB.bin` 未覆盖。
+- **回退备份**：旧项目固件 `firmware/backup/pet_watch_app_v0.1.1_20261011_pre-qspi-fix.bin`；原出厂备份 `firmware/backup/pet_watch_full_v0.0.0_20261011_factory.bin` 未覆盖。
 - **补丁持久化**：managed component 默认不入仓库，重新下载会覆盖本地修改。已保存 `firmware/patches/qspi_flush_completion.patch` 与使用说明；重新 resolve 后必须检查并重施该补丁，保留/核对之前的 DMA 与传输大小调整。
 
 ### 3.14 资源无损压缩与后续开发流程（2026-10-11，已构建/主机验证，待压缩版真机验收）
@@ -139,7 +139,7 @@ python3 ~/esp/esp-idf-5.4/components/esptool_py/esptool/esptool.py \
 - **运行兼容**：眨眼、呆毛、翅膀和植物代码仍读取原来的未压缩 32 位像素。新增资源访问层负责解压；姿态使用六槽 LRU、稳定描述符地址和最近两姿态保护。解压缓存上限 3MiB，ESP32 显式分配在 PSRAM，不挤占显示 DMA 的内部 SRAM。
 - **测量**：129 个输入资源合计 11,907,808 字节 → 压缩负载 3,714,643 字节（含未最终链接的备用素材，不能把该总数等同于固件大小）。最终压缩固件约 3.23MiB，原运行固件约 8.66MiB；同源码关闭压缩的构建约 8.81MiB，包含同步开发中的时钟代码和当前框架配置。10MiB 应用分区保留，压缩版余量约 68%。
 - **验证**：129 个资源的原生解码 CRC32 全部匹配；1,200 次姿态访问/驱逐/重载验证通过。对实际固件 `pet.c` 分别按原始/压缩模式执行完整回归，两组共对应 936 张画面，逐文件字节比较 0 差异。散步、回中、转头、眨眼、扇翅、嘴部及睡眠暂停检查均通过；回归中解压缓存峰值 2,693,136 字节（约 2.57MiB），6 个活跃姿态。此数不含程序其他 RAM，亦不是实际真机 FPS 测量。
-- **开发入口**：修改/同步原始素材后正常构建即可；生成物不手改。`idf.py -D PET_PACK_RESOURCES=OFF build` 可做原始编码对照，`ON` 恢复默认。两种 ESP-IDF 构建均已验证；原始编码对照镜像另存 `firmware/backup/pet_watch_raw_resource_reference_20261011.bin`（不宣称与当前设备烧录版本完全相同）。
+- **开发入口**：修改/同步原始素材后正常构建即可；生成物不手改。`idf.py -D PET_PACK_RESOURCES=OFF build` 可做原始编码对照，`ON` 恢复默认。两种 ESP-IDF 构建均已验证；原始编码对照镜像另存 `firmware/backup/pet_watch_app_v0.1.2_20261011_raw-resource-reference.bin`（不宣称与当前设备烧录版本完全相同）。
 - **安全/持久化**：保留 QSPI 修复和已有 DMA/亮度/刷新设置；修正 `sdkconfig.defaults` 的行内注释格式，确保新配置仍读到 40 行缓冲及 33ms 刷新，而非悄悄回退默认值。此资源优化阶段没有执行设备烧录；压缩版画面、触摸、FPS 与实际 RAM 仍需真机验收。
 - **说明与一键检查**：`firmware/RESOURCE_OPTIMIZATION.md`；`python3 firmware/tools/check_resources.py` 自动完成打包、缓存压力测试及原始/压缩全帧对照。未来多角色/换场景需按文档管理资源寿命，不能无上限保留全部解压图。
 
@@ -155,7 +155,7 @@ python3 ~/esp/esp-idf-5.4/components/esptool_py/esptool/esptool.py \
 | 产物 | 位置 | 状态 |
 |-|-|-|
 | 固件工程 | `firmware/`（CMakeLists=pet_watch，main.c=nvs+bsp_display_start+pet_create） | ✅ 编译通过（lvgl 9.6.0） |
-| 出厂备份 | `firmware/backup/factory_flash_16MB.bin` | ✅ 16MB |
+| 出厂备份 | `firmware/backup/pet_watch_full_v0.0.0_20261011_factory.bin` | ✅ 16MB |
 | 固件镜像 | `firmware/build/pet_watch.bin` | ✅ 约3.27MiB压缩版含钟表/自动黑屏，已刷入并校验；最新交互待真机验收 |
 
 ## 5. 下一步
@@ -172,7 +172,7 @@ python3 ~/esp/esp-idf-5.4/components/esptool_py/esptool/esptool.py \
 ### 6.1 官方自制固件（确认存在）
 
 - 官方 Demo 包 `..\ESP32-S3-Touch-AMOLED-2.06-Demo\Firmware` 提供 **测试固件 bin**（验证板载功能是否正常）+ **FactoryFirmWare**（esp-brookesia 成品级固件：触摸/显示/录音/播放/时钟/陀螺仪/音视频/PMU 控制，持续更新）
-- 官方烧录工具 = `Flash_download_tool`（Windows）；本机恢复出厂直接用已备份 `firmware/backup/factory_flash_16MB.bin`（esptool 写回 0x0 起 16MB）
+- 官方烧录工具 = `Flash_download_tool`（Windows）；本机恢复出厂直接用已备份 `firmware/backup/pet_watch_full_v0.0.0_20261011_factory.bin`（esptool 写回 0x0 起 16MB）
 - 官方明确：**ESP-IDF 例程启用了双缓冲 + 防撕裂优化，比 Arduino 流畅**（动态 20~30 fps）→ 本项目走 ESP-IDF 路线正确，帧率预期可参考
 
 ### 6.2 本板按键与进下载模式（与通用教程不同，重点！）
@@ -247,3 +247,63 @@ python3 ~/esp/esp-idf-5.4/components/esptool_py/esptool/esptool.py \
 读取 AXP2101（I2C 0x34）：状态寄存器 0x00/0x01 与百分比寄存器 0xA4，参考官方 01_AXP2101 的 XPowersLib。电池图标随电量变化；充电显示闪电，充满显示 FULL，无电池且检测到 USB 时显示 USB，无电池无 USB 显示 NO BATTERY，读取失败/百分比超范围显示 --%。不修改充电配置或电源输出。时钟显示时每 5 秒读取，文字有变化才重绘；进入时钟立即刷新。
 
 构建通过；7 个模拟状态检查通过（充电、充满、USB 无电池、无电池无 USB、放电、无效电量、读取失败）。`assets/previews/watch-clock-battery-v1.png` 为 78% 充电状态的 LVGL 布局示例，非真机电量；尚未连接手表验收。
+
+## 8. 固件管理规范（2026-10-16）
+
+固件唯一权威清单见 **`firmware/MANIFEST.md`**（旧名↔新名映射、SHA256、验收状态）；正式发布版见 `firmware/release/`。本规范适用于后续所有固件产物。
+
+### 8.1 命名规范
+
+统一模板：`<设备>_<类型>_<版本>_<YYYYMMDD>_<标识>.bin`
+
+| 字段 | 取值 | 示例 |
+|---|---|---|
+| 设备 | `pet_watch` | pet_watch |
+| 类型 | `full` 全量16M · `app` 应用镜像 · `nvs` NVS分区 · `sys` 系统分区 | pet_watch_app |
+| 版本 | 语义化 `vX.Y.Z`（分区快照省略版本号） | v1.0.0 |
+| 日期 | 备份/构建日 YYYYMMDD | 20261015 |
+| 标识 | 关键差异或 `pre-<变更>`，短横线连接 | sleep-v1 / pre-qspi-fix |
+
+示例：`pet_watch_app_v1.0.0_20261015_sleep-v1.bin`、`pet_watch_nvs_20261014_pre-sleep-v1.bin`。
+
+### 8.2 目录职责
+
+| 目录 | 职责 |
+|---|---|
+| `firmware/release/vX.Y.Z/` | 已验收正式版本，每版一个目录，附 `SHA256SUMS` 与说明（唯一对外交付） |
+| `firmware/backup/` | 变更前快照，命名带 `pre-<变更>`；保留出厂 + 最近版本 + 里程碑 |
+| `build*/`、`firmware/build/` | 构建产物，可再生成，不入库不归档 |
+
+### 8.3 管理规则
+
+1. **刷前必做**：改版/刷机前在 `backup/` 留快照（应用镜像 + NVS，如需），命名带 `pre-<变更>`；刷前用 `MANIFEST.md` 的 SHA256 核对镜像。
+2. **版本号递增**：功能里程碑 +0.1.0（或按影响 +1.0.0），修复 +0.0.1；版本号与 PRODUCT_UPDATES.md 的 PU 编号挂钩，说明变更来源。
+3. **发版流程**：真机验收通过后，将镜像复制到 `release/vX.Y.Z/`，更新 `SHA256SUMS`、`MANIFEST.md` 验收状态与 `release/README.md`。
+4. **保留策略**：出厂全量永不删；里程碑与最近版本保留，其余归档或经确认后清理。
+5. **证据留存**：各版本刷写日志/JSON/CSV 保留在 `backup/`，不作命名规范管理，作为验收证据。
+
+### 8.4 2026-10-16 整理说明
+
+- 全部 28 个备份已按上述规范重命名，改名前后 SHA256 逐一校验一致（不改变任何字节）；旧名↔新名映射见 `MANIFEST.md`。
+- 已按时间线指派版本号：出厂 v0.0.0 → Wi-Fi/时钟/电源/睡眠系列；**最新验收版 v1.0.0（睡眠 v1，PU-044）**已入 `release/v1.0.0/`。
+
+
+### 2026-10-18 v1.1.0候选固件
+
+用户要求通过自制刷机软件自行刷写，新增待真机验收交付目录`firmware/candidates/v1.1.0/`；与仅收录已验收版本的release分开。应用镜像地址0x10000，附SHA256SUMS、manifest.json及刷写说明。内部版本由`firmware/version.txt`明确为1.1.0；本版计步、每日存储与两屏布局见PU-083及firmware/STEPS.md。未代用户烧录，最新已验收版本仍为v1.0.0。当前`firmware/build/pet_watch.bin`已更新为v1.1.0，不再对应历史v0.2.4。
+
+2026-10-18后续修订：用户确认桌面时钟开关联动主屏步数，电量保留；最新待验收候选为`firmware/candidates/v1.1.1/`，内部版本1.1.1，替代上条推荐候选。当前build同为v1.1.1。未刷机，详见PU-084。
+
+### 2026-10-18 刷机软件版本列表接入
+
+已更新当前使用的`/Applications/宠物手表 2.app`到软件0.5.1，加入手表固件1.1.1及更新详情，补齐0x10000应用镜像支持。以后维护外置catalog/manifest/bin即可在“更换版本”重新读取，无需重编译界面；详见[维护说明](firmware/UPDATER_CATALOG.md)。本轮没有替用户点击连接或刷写。
+
+2026-10-18计步复测：用户1.1.1试走不计数，随后显示不可用；设备日志确认1.1.1及计步初始化INVALID_STATE。新增v1.1.2候选修复自身IMU配置热重启恢复并避免旧计数重放；已加入软件外置清单、列表确认，无需重编译软件。未代用户刷写，实际步数增长仍待复测，见PU-086及firmware/STEPS.md。
+
+2026-10-19：v1.1.3计步诊断候选版已应用刷写/哈希通过，参数重新下发及读回/握手核对通过；实际行走待验收。见[candidate](firmware/candidates/v1.1.3/README.md)，不替换正式稳定版。
+
+2026-10-19：1.1.4参数格式对照版已应用刷写，实际素材压缩核对、哈希及启动通过；实验计数不入日历史，120秒/重启恢复基线。见[对照记录](docs/reference/steps-format-comparison-20261019.md)。此为诊断候选版，不是已修复计步交付。
+
+2026-10-19：官方包计步示例适配版1.1.5-official已应用刷写/哈希及95秒启动、面板休眠后静置读取检查通过；实际行走未测。测试计数仅RAM，日历史保留；来源/适配边界见experiments/qmi-official/README.md（本项目根目录）。不替换已验收稳定版。
+
+2026-10-19：用户试走1.1.5仍0。1.1.6命令IRQ自检0边沿后定位IDF适配漏配GPIO21 INPUT（原库setPins无效）；1.1.7-irqfix显式输入修复已刷入，80秒启动/面板休眠后读取通过，同一命令自检2边沿、原CTRL8恢复成功。原库不改，日历史保留；修复后实际行走尚未复测，不当作计步已修复。详见根目录experiments/qmi-official/README.md和PU-090。

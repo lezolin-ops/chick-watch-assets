@@ -1,0 +1,28 @@
+{
+  "version": "1.1.3",
+  "date": "2026-10-19",
+  "timezone": "Asia/Shanghai",
+  "status": "flashed_reinitialization_passed_walking_failed",
+  "chip": "esp32s3",
+  "board": "ESP32-S3-Touch-AMOLED-2.06",
+  "type": "app",
+  "file": "pet_watch_app_v1.1.3_20261019_steps-diagnostic.bin",
+  "offset": "0x10000",
+  "size_bytes": 4105632,
+  "sha256": "b0fad6df7090997f54d5377eae176cf543a56971021c629ae975f6f07d94125e",
+  "app_partition_bytes": 10485760,
+  "free_bytes": 6380128,
+  "packed_assets": true,
+  "resource_manifest": "resource_manifest.json",
+  "bootloader_changed": false,
+  "partition_table_changed": false,
+  "erase_flash": false,
+  "validation": {
+    "host_ui": "passed",
+    "steps": "passed",
+    "build": "passed",
+    "flash": "hash_verified",
+    "boot": "running_diagnostic_commands_passed_full_startup_not_captured",
+    "hardware_acceptance": "failed_user_30_steps_display_0_raw_0"
+  }
+}

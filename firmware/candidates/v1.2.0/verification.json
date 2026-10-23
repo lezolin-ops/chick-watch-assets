@@ -1,0 +1,84 @@
+{
+  "date": "2026-10-19",
+  "timezone": "Asia/Shanghai",
+  "version": "1.2.0",
+  "binary": "pet_watch_app_v1.2.0_20261019_software-steps.bin",
+  "bytes": 4105568,
+  "sha256": "6dd40667862a9246e315c826915b557e36ef5d4a1805a6d1880970f7e4de3528",
+  "app_offset": "0x10000",
+  "partition_bytes": 10485760,
+  "partition_free_bytes": 6380192,
+  "PET_PACK_RESOURCES": "ON",
+  "PET_USE_PACKED_ASSETS": 1,
+  "compressed_assets": 129,
+  "resource_roundtrips": "129 exact byte-for-byte passed",
+  "official_worker_linked": false,
+  "checks": {
+    "host_worker": "passed",
+    "algorithm_ubsan": "passed",
+    "capture_replay_and_mismatch_rejection": "passed",
+    "settings_ui": "passed",
+    "board_patches": "three reverse checks passed"
+  },
+  "device_port": "/dev/cu.usbmodem1101",
+  "flashed": true,
+  "startup_verified": true,
+  "walking_verified": false,
+  "power_verified": false,
+  "upstream_nominal_replays": [
+    {
+      "name": "HughB-walk-1834.csv",
+      "reference": 1834,
+      "result": 1773
+    },
+    {
+      "name": "HughB-walk-2350.csv",
+      "reference": 2350,
+      "result": 2164
+    },
+    {
+      "name": "HughB-static-0.csv",
+      "reference": 0,
+      "result": 0
+    },
+    {
+      "name": "HughB-drive-29min-0.csv",
+      "reference": 0,
+      "result": 58
+    }
+  ],
+  "device_mac": "b8:1f:3f:d8:96:74",
+  "flash_bytes": 33554432,
+  "compressed_transfer_bytes": 2956651,
+  "flash_hash_verified": true,
+  "boot_capture_seconds": 92,
+  "complete_app_initializations": 1,
+  "controlled_rom_headers": 2,
+  "panel_sleep_and_subsequent_reads": true,
+  "read_errors_at_86s": 0,
+  "gaps_at_22s": 11,
+  "gaps_at_86s": 11,
+  "samples_at_22s": 240,
+  "samples_at_86s": 1041,
+  "capture_replay": {
+    "samples": 731,
+    "steps": 0,
+    "resets_or_gaps": 9,
+    "capture_delta_mismatches": 0
+  },
+  "existing_panel_warning": "swap_xy is not supported by this panel",
+  "walking_feedback": {
+    "manual_steps": 51,
+    "end_display": 115,
+    "start_display": null,
+    "result": "inconclusive_missing_start_baseline",
+    "followup_status_totals": [
+      115,
+      115,
+      115,
+      115
+    ],
+    "followup_capture_contains_new_boot": true,
+    "parameters_changed": false
+  }
+}

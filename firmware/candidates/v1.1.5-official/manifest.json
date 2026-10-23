@@ -1,0 +1,30 @@
+{
+  "version": "1.1.5-official",
+  "date": "2026-10-19",
+  "status": "flashed_startup_and_static_sleep_reads_checked_walking_pending",
+  "chip": "esp32s3",
+  "board": "ESP32-S3-Touch-AMOLED-2.06",
+  "type": "app",
+  "file": "pet_watch_app_v1.1.5-official_20261019.bin",
+  "offset": "0x10000",
+  "size_bytes": 4107520,
+  "sha256": "07a768f1e96dcc030100411154f5e3af06a3f3679706fe95681d3577ad3d4628",
+  "app_partition_bytes": 10485760,
+  "free_bytes": 6378240,
+  "packed_assets": true,
+  "official_pedometer": true,
+  "vendor_commit": "b099739",
+  "source_scope": "unmodified bundled SensorLib plus ESP-IDF board adapter and existing pet display/power shell",
+  "nvs_steps_written": false,
+  "bootloader_changed": false,
+  "partition_table_changed": false,
+  "erase_flash": false,
+  "validation": {
+    "build": "passed",
+    "vendor_hashes": "45_files_match",
+    "flash": "hash_verified",
+    "boot": "95s_full_boot_no_panic_panel_sleep_reads_passed",
+    "walking": "not_tested_user_resting",
+    "normal_branch_build": "passed_off_excludes_adapter"
+  }
+}

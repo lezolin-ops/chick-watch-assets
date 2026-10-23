@@ -150,7 +150,7 @@ IDF的S3 GPIO-reset workaround会在tickless模式选择 `PM_SLP_DISABLE_GPIO`�
 
 ## 8. 发布证据
 
-设备MAC `b8:1f:3f:d8:96:74`、32MB Flash已核对；原稳定应用 `backup/pet_watch_home_clock_v5_20261012.bin` 与设备verify_flash摘要一致，复用备份。另备份0～0x10000启动/分区/NVS：`backup/pre_power_20261013_system64k.bin`，清单 `backup/pre_power_20261014_manifest.json`。不公开含设置的备份内容。
+设备MAC `b8:1f:3f:d8:96:74`、32MB Flash已核对；原稳定应用 `backup/pet_watch_app_v0.2.4_20261012_home-clock-v5.bin` 与设备verify_flash摘要一致，复用备份。另备份0～0x10000启动/分区/NVS：`backup/pet_watch_sys_20261013_pre-power.bin`，清单 `backup/pre_power_20261014_manifest.json`。不公开含设置的备份内容。
 
 临时首版4026192字节，仅应用0x10000刷写，传输压缩/哈希通过。95秒日志确认显示、8MB PSRAM、RTC、取得IP、SNTP和RTC写回，约60秒黑屏并停止无线，无panic/反复重启；原swap_xy提示仍存在。该版本的强制息屏停网已按用户后续要求调整，不作为最终规则。
 
@@ -159,10 +159,10 @@ host测试覆盖隐藏场景停止/恢复、默认保留Wi-Fi、双应用需求�
 ### 最终可配置版本（2026-10-14）
 
 - 构建：IDF5.4.2，应用4027120字节，10MiB应用分区剩6458640字节（约62%）；129项资源均使用压缩描述符并完成往返校验，实际宏 `PET_USE_PACKED_ASSETS=1`；四个独立优化开关ON，80/240MHz，USB禁止自动轻睡眠，GPIO保持已实现。
-- 恢复保护：原稳定应用及系统/NVS备份保留；最终副本 `backup/pet_watch_power_configurable_20261014.bin`，SHA256 `c1ad97876df656843ddb04ae81874d013be4ff0e2ed14048b61937c6709ab262`。未改启动程序/分区/NVS布局。
+- 恢复保护：原稳定应用及系统/NVS备份保留；最终副本 `backup/pet_watch_app_v0.3.1_20261014_power-configurable.bin`，SHA256 `c1ad97876df656843ddb04ae81874d013be4ff0e2ed14048b61937c6709ab262`。未改启动程序/分区/NVS布局。
 - 烧录：仅应用0x10000，压缩传输4027120→2915786字节，写入哈希通过；不把传输压缩冒充素材压缩。
 - 启动：95秒，只有一次启动；显示、8MB PSRAM、RTC、取得IP、SNTP、RTC写回正常；约60秒黑屏，日志确认策略为保持Wi-Fi，未出现自动停止无线、panic或反复重启。原swap_xy不支持日志仍在。证据已保存到本地私有备份 `power_final_startup_20261014.log` / `power_final_flash_20261014.log`，发布摘要 `power_stage1_20261014_release.json`。
-- 对照：独立 `build-power-baseline` 压缩构建通过，`WATCH_POWER_ENABLED=0`；副本 `backup/pet_watch_power_baseline_20261014.bin` 仅供相关机制等时对照，**未刷入、未做电池测量**，不是原稳定备份的替代品。
+- 对照：独立 `build-power-baseline` 压缩构建通过，`WATCH_POWER_ENABLED=0`；副本 `backup/pet_watch_app_v0.3.2_20261014_power-baseline.bin` 仅供相关机制等时对照，**未刷入、未做电池测量**，不是原稳定备份的替代品。
 - 人工验收：电池真实轻睡眠/唤醒、显示完整性、真实按键/触摸和短时功耗未完成。USB启动正常不能升级为电池续航验收。
 
 ## 一天后台观察
@@ -207,3 +207,7 @@ host测试覆盖隐藏场景停止/恢复、默认保留Wi-Fi、双应用需求�
 ## 2026-10-15 睡眠v1动画合并发布
 
 睡眠v1、最新日常呼吸与弹跳层已同步并应用刷入，既有电源参数及Wi-Fi策略沿用。新增头部像素处理以pet_sleep CPU客户端短暂获取/释放，不在睡眠循环长期持锁。隐藏场景同时暂停普通/睡眠呼吸及头部下垂，时间补偿恢复。入睡/睡眠/醒来各10秒隐藏模拟通过，真机睡眠/醒来状态通过；未进行本次耗电对照，不报告续航收益。见[SLEEP_V1.md](SLEEP_V1.md)。
+
+## 2026-10-19 软件计步候选版
+
+1.2.0默认worker改为每80ms读取QMI加速度并运行Bangle.js算法；传感器±2g/62.5Hz、LPF2，陀螺仪与硬件计步关闭。只有读数/计算/存储时持AWAKE，等待释放，Wi-Fi策略不变，无默认高频日志。显式60秒采集会增加日志负载，不用于功耗对比。相比旧每2秒读硬件计数会增加主控唤醒，尚无功耗改善证据；FIFO批量读取尚未实现。构建/主机测试通过；随后应用刷写/哈希及92秒USB启动、面板休眠后采样通过。USB阻止实际CPU自动轻睡眠，电池侧等时开/关对比与轻睡眠采样连续性均待验收。见[技术说明](../docs/reference/software-steps-port-20261019.md)。

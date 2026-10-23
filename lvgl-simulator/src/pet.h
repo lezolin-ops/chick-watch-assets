@@ -42,6 +42,15 @@ void pet_set_state(pet_state_t state);
 /** Play a 1600ms one-shot response; false while busy, sleeping or cooling down (2500ms). */
 bool pet_play_happy_once(void);
 
+/** Simulator preview only: force-loop happy after gap_ms, bypassing cooldown. Not for firmware. */
+void pet_happy_demo_tick(uint32_t gap_ms);
+
+/** Simulator preview only: loop the angry keyframe sequence; per-frame holds + gap. Not for firmware. */
+void pet_angry_demo_tick(uint32_t gap_ms);
+
+/** Simulator preview workbench: freeze daily phase/walk/blink/mouth, show a neutral base. Not for firmware. */
+void pet_set_demo_mode(bool on);
+
 #ifdef __cplusplus
 }
 #endif

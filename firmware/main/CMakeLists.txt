@@ -1,5 +1,10 @@
+option(WATCH_OFFICIAL_PEDOMETER "Use unmodified bundled SensorLib pedometer example adapter (diagnostic)" OFF)
+set(WATCH_STEPS_SOURCE watch_steps.c watch_step_algorithm.c third_party/bangle_stepcount/stepcount.c)
+if(WATCH_OFFICIAL_PEDOMETER)
+    set(WATCH_STEPS_SOURCE "${CMAKE_CURRENT_LIST_DIR}/../../experiments/qmi-official/watch_steps_official.cpp")
+endif()
 idf_component_register(
-    SRCS main.c pet.c watch_clock.c watch_home_clock.c watch_cartoon_68.c watch_wifi.c watch_settings.c watch_font_24.c watch_time_sync.c watch_power.c watch_battery_log.c watch_panel.c watch_idle_diag.c
+    SRCS main.c ${WATCH_STEPS_SOURCE} watch_steps_font_24.c watch_step_numbers_30.c watch_pill_numbers_24.c watch_date_26.c pet.c watch_clock.c watch_home_clock.c watch_cartoon_68.c watch_wifi.c watch_settings.c watch_font_24.c watch_time_sync.c watch_power.c watch_battery_log.c watch_panel.c watch_idle_diag.c
     INCLUDE_DIRS .)
 
 option(WATCH_ENABLE_POWER_MANAGEMENT "Use watch power policy (OFF only for timed A/B comparison)" ON)
@@ -57,3 +62,8 @@ target_compile_options(${LVGL_LIB} PRIVATE -DLV_LVGL_H_INCLUDE_SIMPLE)
 
 option(WATCH_IDLE_DIAGNOSTICS "Two read-only peripheral snapshots per boot" ON)
 target_compile_definitions(${COMPONENT_LIB} PRIVATE WATCH_IDLE_DIAGNOSTICS=$<BOOL:${WATCH_IDLE_DIAGNOSTICS}>)
+
+if(WATCH_OFFICIAL_PEDOMETER)
+    target_include_directories(${COMPONENT_LIB} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../../experiments/qmi-official/vendor/SensorLib")
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE CONFIG_SENSORLIB_ESP_IDF_NEW_API=1 WATCH_OFFICIAL_PEDOMETER=1)
+endif()

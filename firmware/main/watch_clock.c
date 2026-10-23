@@ -5,6 +5,7 @@
 #include "watch_clock.h"
 #include "watch_settings.h"
 #include "watch_home_clock.h"
+#include "watch_steps.h"
 #include "watch_power.h"
 #include "watch_wifi.h"
 #include "watch_battery_log.h"
@@ -23,12 +24,11 @@
 #include <sys/time.h>
 #include <stdatomic.h>
 
-static lv_obj_t *s_pet_screen, *s_clock_screen, *s_black_screen, *s_time, *s_date, *s_power;
+static lv_obj_t *s_pet_screen, *s_clock_screen, *s_black_screen;
 static bool s_showing;
 static bool s_time_valid;
 static bool s_blanked;
 static uint32_t s_clock_entered;
-static int s_last_minute = -1;
 static i2c_master_dev_handle_t s_rtc;
 static i2c_master_dev_handle_t s_pmu;
 static uint32_t s_power_checked;
@@ -43,7 +43,6 @@ void watch_clock_network_time_ready(void) { atomic_store(&s_network_time_pending
 static void apply_network_time(void)
 {
     if(!atomic_exchange(&s_network_time_pending, false)) return;
-    s_last_minute = -1;
     s_time_valid = true;
     time_t now = time(NULL); struct tm t; localtime_r(&now, &t);
     if(!s_rtc || t.tm_year < 124 || t.tm_year > 199) return;
@@ -82,7 +81,7 @@ static void update_power(bool force)
     }
     if(strcmp(text, s_power_text) != 0) {
         snprintf(s_power_text, sizeof(s_power_text), "%s", text);
-        lv_label_set_text(s_power, text);
+        watch_status_set_power(text);
     }
 }
 
@@ -133,19 +132,7 @@ static void init_time(void)
 static void update_labels(void)
 {
     time_t now = time(NULL); struct tm t; localtime_r(&now, &t);
-    if(t.tm_min == s_last_minute) return;
-    s_last_minute = t.tm_min;
-    char text[40];
-    snprintf(text, sizeof(text), "%02d:%02d", t.tm_hour, t.tm_min);
-    lv_label_set_text(s_time, text);
-    static const char *days[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
-    snprintf(text, sizeof(text), "%02d / %02d   %s", t.tm_mon + 1, t.tm_mday, days[t.tm_wday]);
-    lv_label_set_text(s_date, text);
-    /* Minute-by-minute movement spreads the lit pixels over a small area. */
-    int dx = (t.tm_min % 3 - 1) * 4, dy = ((t.tm_min / 3) % 3 - 1) * 4;
-    lv_obj_align(s_time, LV_ALIGN_CENTER, dx, -46 + dy);
-    lv_obj_align(s_date, LV_ALIGN_CENTER, dx, 44 + dy);
-    lv_obj_align(s_power, LV_ALIGN_CENTER, dx, 116 + dy);
+    watch_standby_face_update(&t,s_time_valid);
 }
 
 static void show_clock(void)
@@ -153,7 +140,7 @@ static void show_clock(void)
     watch_power_set_blanked(false);
     if(watch_panel_wake()!=ESP_OK){ESP_LOGW(TAG,"Panel wake failed; retry with a button");return;}
     s_showing = true; s_blanked = false; s_clock_entered = lv_tick_get();
-    pet_set_paused(true); s_last_minute = -1;
+    pet_set_paused(true);
     update_power(true); update_labels(); lv_screen_load(s_clock_screen);
     bsp_display_brightness_set(10);
 }
@@ -164,6 +151,7 @@ static void wake_cb(lv_event_t *e)
     watch_power_set_blanked(false);
     if(watch_panel_wake()!=ESP_OK){ESP_LOGW(TAG,"Panel wake failed; retry with a button");return;}
     s_showing = false; s_blanked = false;
+    update_power(true);
     lv_screen_load(s_pet_screen);
     lv_obj_invalidate(s_pet_screen);
     lv_refr_now(NULL);
@@ -203,6 +191,16 @@ static void pet_manual_poll(void)
             line[used]=0;
             bool enter=!overflow && strcmp(line,"PET_SLEEP")==0;
             bool leave=!overflow && strcmp(line,"PET_WAKE")==0;
+            if(!overflow && strcmp(line,"STEPS_STATUS")==0)watch_steps_request_diagnostics();
+#if !WATCH_OFFICIAL_PEDOMETER
+            if(!overflow && strcmp(line,"STEPS_CAPTURE")==0)watch_steps_request_capture();
+#endif
+#if WATCH_OFFICIAL_PEDOMETER
+            if(!overflow && strcmp(line,"STEPS_IRQ_TEST")==0)watch_steps_request_irq_probe();
+#endif
+            if(!overflow && strcmp(line,"STEPS_REINIT")==0)watch_steps_request_reinitialize();
+            if(!overflow && strlen(line)==13 && strncmp(line,"STEPS_FORMAT",12)==0 && line[12]>='1' && line[12]<='3')
+                watch_steps_request_format_test((unsigned)(line[12]-'0'));
             if(enter || leave) {
                 if(watch_settings_active()) ESP_LOGI("pet_sleep","close settings before manual sleep control");
                 else {
@@ -225,7 +223,9 @@ static void tick_cb(lv_timer_t *timer)
     pet_manual_poll();
     apply_network_time();
     time_t now = time(NULL); struct tm t; localtime_r(&now, &t);
+    watch_steps_set_date(&t, s_time_valid);
     watch_home_clock_update(&t, s_time_valid);
+    if(!s_blanked && !watch_settings_active())update_power(false);
     unsigned mode=watch_settings_active()?BATLOG_SETTINGS:s_blanked?BATLOG_BLACK:s_showing?BATLOG_CLOCK:BATLOG_PET;
     unsigned brightness=mode==BATLOG_BLACK?0:mode==BATLOG_CLOCK?10:watch_settings_brightness();
     watch_battery_log_tick(s_pmu,mode,brightness,s_time_valid);
@@ -273,30 +273,14 @@ void watch_clock_create(lv_obj_t *pet_screen)
     init_time(); s_pet_screen = pet_screen;
     watch_home_clock_create(pet_screen);
     time_t now = time(NULL); struct tm t; localtime_r(&now, &t);
+    watch_steps_set_date(&t, s_time_valid);
     watch_home_clock_update(&t, s_time_valid);
     s_clock_screen = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(s_clock_screen, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(s_clock_screen, LV_OPA_COVER, 0);
     lv_obj_set_scrollable(s_clock_screen, false);
     lv_obj_add_event_cb(s_clock_screen, wake_cb, LV_EVENT_PRESSED, NULL);
-    s_time = lv_label_create(s_clock_screen);
-    lv_obj_set_style_text_font(s_time, &lv_font_montserrat_48, 0);
-    lv_obj_set_style_text_color(s_time, lv_color_hex(0xDADADA), 0);
-    lv_obj_set_style_transform_scale(s_time, 512, 0);
-    lv_obj_set_style_transform_pivot_x(s_time, lv_pct(50), 0);
-    lv_obj_set_style_transform_pivot_y(s_time, lv_pct(50), 0);
-    s_date = lv_label_create(s_clock_screen);
-    lv_obj_set_style_text_font(s_date, &lv_font_montserrat_26, 0);
-    lv_obj_set_style_transform_scale(s_date, 315, 0);
-    lv_obj_set_style_transform_pivot_x(s_date, lv_pct(50), 0);
-    lv_obj_set_style_transform_pivot_y(s_date, lv_pct(50), 0);
-    lv_obj_set_style_text_color(s_date, lv_color_hex(0xBBBBBB), 0);
-    s_power = lv_label_create(s_clock_screen);
-    lv_obj_set_style_text_font(s_power, &lv_font_montserrat_24, 0);
-    lv_obj_set_style_transform_scale(s_power, 384, 0);
-    lv_obj_set_style_transform_pivot_x(s_power, lv_pct(50), 0);
-    lv_obj_set_style_transform_pivot_y(s_power, lv_pct(50), 0);
-    lv_obj_set_style_text_color(s_power, lv_color_hex(0xBDBDBD), 0);
+    watch_standby_face_create(s_clock_screen);
     s_black_screen = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(s_black_screen, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(s_black_screen, LV_OPA_COVER, 0);

@@ -13,10 +13,18 @@
 /build-clock-preview/
 /build-power/
 /build-power-baseline/
+/build/
+/firmware/build-official/
 /firmware/managed_components/
 /firmware/backup/
+/firmware/release/
+/firmware/candidates/**/*.bin
 /firmware/sdkconfig
 /firmware/sdkconfig.old
+
+# Local experiment runtimes and video outputs (not source).
+/experiments/ltx_local/
+/experiments/happy_motion_compare/
 
 # Operating-system metadata.
 .DS_Store

@@ -6,11 +6,16 @@ from PIL import Image, ImageDraw, ImageFont
 p = argparse.ArgumentParser()
 p.add_argument('--font', required=True)
 p.add_argument('--output', required=True)
+p.add_argument('--text', help='Explicit text for a separate subset')
+p.add_argument('--name', default='watch_font_24')
+p.add_argument('--size', type=int, default=24)
 a = p.parse_args()
 source = Path(__file__).resolve().parents[1] / 'main'
 text = ''.join((source / name).read_text() for name in ('watch_settings.c', 'watch_wifi.c', 'watch_home_clock.c'))
+if a.text is not None: text = a.text
+if not a.name.isidentifier(): p.error('Font name must be an identifier')
 chars = sorted(set(c for c in text if '\u3000' <= c <= '\uffef'))
-font = ImageFont.truetype(a.font, 24)
+font = ImageFont.truetype(a.font, a.size)
 bitmap = []
 descriptors = ['{0}']
 for char in chars:
@@ -31,5 +36,7 @@ result += 'static const uint16_t unicode[] = {' + ','.join(str(ord(c)-start) for
 result += 'static const lv_font_fmt_txt_cmap_t cmap[] = {{.range_start=%d,.range_length=%d,.glyph_id_start=1,.unicode_list=unicode,.list_length=%d,.type=LV_FONT_FMT_TXT_CMAP_SPARSE_TINY}};\n' % (start,ord(chars[-1])-start+1,len(chars))
 result += 'static const lv_font_fmt_txt_dsc_t dsc = {.glyph_bitmap=bitmap,.glyph_dsc=glyphs,.cmaps=cmap,.cmap_num=1,.bpp=4};\n'
 result += 'const lv_font_t watch_font_24 = {.get_glyph_dsc=lv_font_get_glyph_dsc_fmt_txt,.get_glyph_bitmap=lv_font_get_bitmap_fmt_txt,.line_height=30,.base_line=5,.dsc=&dsc,.fallback=&lv_font_montserrat_24};\n'
+result = result.replace('.line_height=30', '.line_height=%d' % (a.size+6)).replace('&lv_font_montserrat_24', '&lv_font_montserrat_%d' % a.size)
+result = result.replace('const lv_font_t watch_font_24 =', f'const lv_font_t {a.name} =')
 Path(a.output).write_text(result)
 print(f'{len(chars)} glyphs, {len(bitmap)} bitmap bytes')

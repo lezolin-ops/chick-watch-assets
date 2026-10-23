@@ -1,0 +1,31 @@
+{
+  "version": "1.1.6-irq",
+  "date": "2026-10-19",
+  "status": "diagnostic_irq0_restored_input_configuration_omission_identified",
+  "chip": "esp32s3",
+  "board": "ESP32-S3-Touch-AMOLED-2.06",
+  "type": "app",
+  "file": "pet_watch_app_v1.1.6-irq_20261019.bin",
+  "offset": "0x10000",
+  "size_bytes": 4108464,
+  "sha256": "cb7ba0421ff2d84874bb9c603cefe56629060e94bfc0101aa86c404fab22dcf1",
+  "app_partition_bytes": 10485760,
+  "free_bytes": 6377296,
+  "packed_assets": true,
+  "official_pedometer": true,
+  "vendor_commit": "b099739",
+  "source_scope": "unmodified bundled SensorLib plus ESP-IDF board adapter and existing pet display/power shell",
+  "nvs_steps_written": false,
+  "bootloader_changed": false,
+  "partition_table_changed": false,
+  "erase_flash": false,
+  "validation": {
+    "build": "passed",
+    "vendor_hashes": "45_files_match",
+    "flash": "hash_verified",
+    "boot": "80s_passed",
+    "walking": "previous_1.1.5_user_report_failed",
+    "normal_branch_build": "passed_off_excludes_adapter",
+    "irq_probe": "command0_edges0_restored1_gpio_input_not_configured"
+  }
+}

@@ -13,6 +13,7 @@
 #include "watch_power.h"
 #include "watch_battery_log.h"
 #include "watch_idle_diag.h"
+#include "watch_steps.h"
 
 static const char *TAG = "pet_watch";
 
@@ -39,5 +40,7 @@ void app_main(void)
     err = watch_battery_log_init();
     if(err != ESP_OK) ESP_LOGW(TAG, "Battery recording unavailable: %s", esp_err_to_name(err));
     watch_idle_diag_snapshot(0);
+    err = watch_steps_init();
+    if(err != ESP_OK) ESP_LOGW(TAG, "Step counting unavailable: %s", esp_err_to_name(err));
     bsp_display_unlock();
 }

@@ -13,7 +13,7 @@ If already applied, `git apply --reverse --check firmware/patches/fixed_portrait
 
 The board uses a QSPI display, not a parallel RGB panel. Using `lvgl_port_add_disp_rgb` selects the RGB flush path, which reports the draw buffer ready immediately after enqueueing a bitmap transfer. SPI DMA may still be reading it. `lvgl_port_add_disp` instead registers the SPI colour-transfer completion callback and releases the buffer after transmission.
 
-The fix changes only display registration; it leaves existing internal DMA row-buffer, transfer-size, brightness, memory and timing adjustments intact. Current application binary before this fix is preserved in `firmware/backup/pet_watch_before_qspi_fix_20261011.bin`; original factory backup remains unchanged.
+The fix changes only display registration; it leaves existing internal DMA row-buffer, transfer-size, brightness, memory and timing adjustments intact. Current application binary before this fix is preserved in `firmware/backup/pet_watch_app_v0.1.1_20261011_pre-qspi-fix.bin`; original factory backup remains unchanged.
 
 Managed components are ignored and may be replaced by the dependency manager. Keep this patch in version control and reapply after dependency regeneration, from the project root:
 

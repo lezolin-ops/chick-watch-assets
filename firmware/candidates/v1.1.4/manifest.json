@@ -1,0 +1,28 @@
+{
+  "version": "1.1.4",
+  "date": "2026-10-19",
+  "timezone": "Asia/Shanghai",
+  "status": "flashed_format_comparisons_no_step_growth",
+  "chip": "esp32s3",
+  "board": "ESP32-S3-Touch-AMOLED-2.06",
+  "type": "app",
+  "file": "pet_watch_app_v1.1.4_20261019_steps-format.bin",
+  "offset": "0x10000",
+  "size_bytes": 4106192,
+  "sha256": "67a9cf78e450a0d57d4ebdf09c7e9797482f6f616259e53bdc648b6663cf67f9",
+  "app_partition_bytes": 10485760,
+  "free_bytes": 6379568,
+  "packed_assets": true,
+  "resource_manifest": "resource_manifest.json",
+  "bootloader_changed": false,
+  "partition_table_changed": false,
+  "erase_flash": false,
+  "validation": {
+    "host_ui": "passed",
+    "steps": "passed",
+    "build": "passed",
+    "flash": "hash_verified",
+    "boot": "startup_1.1.4_psram_display_sensor_checked",
+    "hardware_acceptance": "three_user_30_step_trials_raw0_in_captured_samples_third_tail_missing"
+  }
+}
