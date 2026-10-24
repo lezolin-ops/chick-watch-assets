@@ -46,6 +46,10 @@ bool pet_play_happy_once(void);
  *  response instead of bouncing one static base sprite. Off by default. */
 void pet_set_happy_keyframes(bool on);
 
+/** A/B for --happy-keys: use the uncropped 192x192 ARGB8888 originals (864 KB)
+ *  instead of the cropped RGB565A8 set (343 KB). Simulator comparison only. */
+void pet_set_happy_kf_full(bool on);
+
 /** Simulator preview only: force-loop happy after gap_ms, bypassing cooldown. Not for firmware. */
 void pet_happy_demo_tick(uint32_t gap_ms);
 

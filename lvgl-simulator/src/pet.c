@@ -19,7 +19,8 @@
 #include "pet_side_body_eyes.h"
 #include <string.h>
 #include <stdio.h>
-#include "pet_happy_frames.c" /* simulator preview only: AI happy keyframes */
+#include "pet_happy_frames.c" /* 192x192 ARGB8888 AI happy keyframes (864 KB, reference) */
+#include "pet_happy_kf.c" /* cropped 150x168 RGB565A8 AI happy keyframes (443 KB, firmware) */
 #include "pet_happy_seq.c" /* simulator preview only: AI smooth sequence frames (not firmware) */
 #include "pet_angry_seq.c" /* simulator preview only: angry keyframe loop (not firmware) */
 #include "pet_material_palette.h"
@@ -194,6 +195,13 @@ static uint32_t palette_skin_color(int canonical_x,int y)
     return 0xFCD53B;
 }
 
+/* Opacity of the AI keyframe layer: 0 = legacy body only, 255 = AI art only.
+ * Ramped at both ends of the response so entering/leaving the daily idle pose
+ * is a cross-fade instead of a jump cut. Declared here because the procedural
+ * beak drawer needs it to fade out while the AI art is showing. */
+static uint8_t happy_kf_blend = 0;
+#define HAPPY_KF_FADE 130
+
 static uint8_t mouth_mask_data[192*192];
 static const lv_image_dsc_t mouth_mask={
     .header={.magic=LV_IMAGE_HEADER_MAGIC,.cf=LV_COLOR_FORMAT_A8,
@@ -234,6 +242,10 @@ static void mouth_draw_cb(lv_event_t *event)
 {
     const mouth_pose_t *m=s_pet.mouth;
     if((!s_pet.awake && sleep_phase!=SLEEP_LOOP) || m==NULL || m->count==0 || m->mode==2) return;
+    /* The AI keyframes already carry an open smiling beak, so the procedural
+     * beak fades out as the AI art fades in (otherwise two mouths overlap). */
+    lv_opa_t mouth_opa = 255 - happy_kf_blend;
+    if(mouth_opa == 0) return;
     lv_layer_t *layer=lv_event_get_layer(event);
     lv_area_t origin;
     lv_obj_get_coords(s_pet.img,&origin);
@@ -241,7 +253,7 @@ static void mouth_draw_cb(lv_event_t *event)
     int scale_y=lv_obj_get_style_transform_scale_y(s_pet.img,0);
     lv_draw_rect_dsc_t fill;
     lv_draw_rect_dsc_init(&fill);
-    fill.bg_opa=LV_OPA_COVER;
+    fill.bg_opa=mouth_opa;
     for(unsigned i=0;i<m->count;i++) {
         const mouth_row_t *r=&m->rows[i];
         int row_y=origin.y1+170+(int)lroundf((r->y-170)*scale_y/256.0f);
@@ -268,6 +280,7 @@ static void mouth_draw_cb(lv_event_t *event)
     lv_draw_image_dsc_t art;
     lv_draw_image_dsc_init(&art);
     art.src=pet_color_image(beak_images[direction<0][m->mode][s_pet.mouth_stage]);
+    art.opa=mouth_opa;
     art.scale_y=scale_y;
     art.pivot.x=0;
     art.pivot.y=170-(m->cy-10);
@@ -692,10 +705,15 @@ static void update_tuft(void)
 static bool demo_mode = false;
 /* Isolated layer for AI keyframes, sibling of the legacy character body. */
 static lv_obj_t *s_demo_img = NULL;
+/* Isolated layer for the cropped RGB565A8 keyframes. These no longer fill the
+ * full 192x192 box, so it carries its own size + HAPPY_KF_X/Y offset. */
+static lv_obj_t *s_kf_img = NULL;
 static const lv_image_dsc_t * const ai_seq[];
 
 /* Click dispatches one owned timeline; no independent click-bounce animation. */
 static void happy_progress_cb(void *var, int32_t value);
+static int happy_last_kf = -1;
+static void happy_kf_hide(void);
 static void happy_finish(void)
 {
     if(!s_pet.happy) return;
@@ -709,6 +727,8 @@ static void happy_finish(void)
     lv_obj_set_style_transform_scale_x(s_pet.pet,256,0);
     lv_obj_set_style_transform_scale_y(s_pet.pet,256,0);
     lv_obj_set_style_translate_y(s_pet.jump,0,0);
+    happy_last_kf=-1;
+    happy_kf_hide();
     render_eyes();
     if(demo_mode) {
         /* Hold the sequence's own first frame through the rest gap; legacy
@@ -721,11 +741,16 @@ static void happy_finish(void)
 
 }
 
-/* AI keyframe slots for the simulator workbench; pose squash is baked into
- * the images, so the demo only adds the vertical hop, not a second squash. */
+/* AI keyframe slots. Cropped RGB565A8 by default (443 KB); the full-canvas
+ * ARGB8888 originals stay compiled for A/B via pet_set_happy_kf_full(). */
 static const lv_image_dsc_t * const happy_frames[] = {
+    &pet_happy_kf_0, &pet_happy_kf_1, &pet_happy_kf_2,
+    &pet_happy_kf_3, &pet_happy_kf_4, &pet_happy_kf_5
+};
+static const lv_image_dsc_t * const happy_frames_full[] = {
     &pet_happy_0, &pet_happy_1, &pet_happy_2, &pet_happy_3, &pet_happy_4, &pet_happy_5
 };
+static bool happy_kf_full = false;
 
 /* AI smooth sequence: jump height and smile transition are baked into each
  * frame, so the demo must NOT add its own vertical translate (would double-hop). */
@@ -746,6 +771,43 @@ static bool happy_keyframes = false;
 void pet_set_happy_keyframes(bool on)
 {
     happy_keyframes = on;
+}
+/* A/B only: show the uncropped 192x192 ARGB8888 originals instead of the
+ * cropped RGB565A8 set, so the two can be diffed frame by frame. */
+void pet_set_happy_kf_full(bool on)
+{
+    happy_kf_full = on;
+}
+
+/* Cross-fade the AI keyframe layer against the legacy body. The cropped art
+ * sits at HAPPY_KF_X/Y inside the 192 box, so it needs its own offset. */
+static void happy_kf_show(int kf, uint8_t blend)
+{
+    if(!s_kf_img) return;
+    const lv_image_dsc_t * const *set = happy_kf_full ? happy_frames_full : happy_frames;
+    if(happy_kf_full) {
+        lv_obj_set_size(s_kf_img, 192, 192);
+        lv_obj_set_pos(s_kf_img, 0, 0);
+    } else {
+        lv_obj_set_size(s_kf_img, HAPPY_KF_W, HAPPY_KF_H);
+        lv_obj_set_pos(s_kf_img, HAPPY_KF_X, HAPPY_KF_Y);
+    }
+    lv_img_set_src(s_kf_img, set[kf]);
+    lv_obj_set_hidden(s_kf_img, false);
+    /* Keep the legacy body underneath and fade between the two: a hard layer
+     * swap reads as a jump cut against the daily idle pose. */
+    lv_obj_set_style_opa(s_kf_img, blend, 0);
+    lv_obj_set_style_opa(s_pet.img, 255 - blend, 0);
+    lv_obj_invalidate(s_kf_img);
+}
+
+static void happy_kf_hide(void)
+{
+    if(!s_kf_img) return;
+    lv_obj_set_hidden(s_kf_img, true);
+    lv_obj_set_hidden(s_pet.img, false);
+    lv_obj_set_style_opa(s_pet.img, LV_OPA_COVER, 0);
+    happy_kf_blend = 0;
 }
 
 static int happy_last_frame = -1;
@@ -788,12 +850,14 @@ static void happy_progress_cb(void *var, int32_t value)
     if(happy_keyframes) {
         /* Art-driven: the keyframes already carry the smiling eyes, so skip
          * the programmatic eye overlay to avoid double-drawn eyes. */
-        static int last_kf = -1;
         int kf = happy_frame_for_t(t);
-        if(kf != last_kf) {
-            last_kf = kf;
-            lv_img_set_src(s_pet.img, happy_frames[kf]);
-            lv_obj_invalidate(s_pet.img);
+        uint8_t blend = 255;
+        if(t < HAPPY_KF_FADE) blend = (uint8_t)(t * 255 / HAPPY_KF_FADE);
+        else if(t > 1600u - HAPPY_KF_FADE) blend = (uint8_t)((1600u - t) * 255 / HAPPY_KF_FADE);
+        if(kf != happy_last_kf || blend != happy_kf_blend) {
+            happy_last_kf = kf;
+            happy_kf_blend = blend;
+            happy_kf_show(kf, blend);
         }
         s_pet.happy_smiling = false;
         s_pet.blink_stage = 0;
@@ -1336,6 +1400,15 @@ void pet_create(lv_obj_t *parent, lv_coord_t w, lv_coord_t h)
     lv_obj_set_clickable(s_demo_img, false);
     lv_obj_set_scrollable(s_demo_img, false);
     lv_obj_set_hidden(s_demo_img, true);
+    /* Cropped RGB565A8 keyframe layer: child of the 192 character box so it
+     * inherits the same squash/hop transform as the body it replaces. */
+    s_kf_img = lv_img_create(pet);
+    lv_obj_remove_style_all(s_kf_img);
+    lv_obj_set_size(s_kf_img, HAPPY_KF_W, HAPPY_KF_H);
+    lv_obj_set_pos(s_kf_img, HAPPY_KF_X, HAPPY_KF_Y);
+    lv_obj_set_clickable(s_kf_img, false);
+    lv_obj_set_scrollable(s_kf_img, false);
+    lv_obj_set_hidden(s_kf_img, true);
     s_pet.x = 0;
     s_pet.timer = lv_timer_create(routine_timer_cb, 20, NULL);
     s_pet.blink_started = lv_tick_get();

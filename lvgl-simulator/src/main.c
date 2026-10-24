@@ -160,6 +160,9 @@ int main(int argc, char **argv)
     /* --happy-keys: during the happy response, swap in the 6 AI keyframes
        (wings/tilt/mouth baked into the art) instead of bouncing one sprite. */
     else if(strcmp(argv[i],"--happy-keys")==0) pet_set_happy_keyframes(true);
+    /* --happy-kf-full: A/B for --happy-keys -- draw the uncropped 192x192
+       ARGB8888 originals instead of the cropped RGB565A8 set. */
+    else if(strcmp(argv[i],"--happy-kf-full")==0) pet_set_happy_kf_full(true);
     else if(strcmp(argv[i],"--happy-once")==0) {
       happy_once_at = (i+1<argc && argv[i+1][0]>='0' && argv[i+1][0]<='9')
                       ? (uint32_t)atoi(argv[++i]) : 500;
