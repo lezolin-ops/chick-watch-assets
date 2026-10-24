@@ -134,6 +134,7 @@ int main(int argc, char **argv)
    *   main.exe --happy-demo --shot 80 2 E:/tmp/f  */
   pet_create(lv_screen_active(), 410, 502);
   bool happy_demo=false, angry_demo=false, sleep_demo=false;
+  uint32_t happy_once_at = 0;
   /* --shot <count> <every> <prefix>: render, dump frames, exit.
    * Driven by LVGL tick (real time), NOT loop iterations: iterations vary
    * in length (timer handler returns the wait till the next due timer).
@@ -145,6 +146,13 @@ int main(int argc, char **argv)
     if(strcmp(argv[i],"--sleep-demo")==0) sleep_demo=true;
     else if(strcmp(argv[i],"--happy-demo")==0) happy_demo=true;
     else if(strcmp(argv[i],"--angry-demo")==0) angry_demo=true;
+    /* --happy-once [delay_ms]: fire the FIRMWARE happy response once -- 6
+     * keyframes + programmatic squash/stretch over 1600ms, exactly what a
+     * tap runs on the real device. Uses no AI sequence frames. */
+    else if(strcmp(argv[i],"--happy-once")==0) {
+      happy_once_at = (i+1<argc && argv[i+1][0]>='0' && argv[i+1][0]<='9')
+                      ? (uint32_t)atoi(argv[++i]) : 500;
+    }
     else if(strcmp(argv[i],"--shot")==0 && i+1<argc) {
       shot_left = atoi(argv[++i]);
       if(i+1<argc) shot_every = atoi(argv[++i]);
@@ -164,12 +172,21 @@ int main(int argc, char **argv)
   /* Lottie 演示版（lv_lottie + ThorVG）备用：改调 lottie_demo_create 即可切换 */
   //lottie_demo_create(lv_screen_active(), 410, 502);
 
+  /* Fire the firmware happy response once the delay elapses (fails silently
+   * if the pet is not awake yet at that moment). */
+  if(happy_once_at) happy_once_at += lv_tick_get();
+
   while(1) {
     /* Periodically call the lv_task handler.
      * It could be done in a timer interrupt or an OS task too.*/
     uint32_t sleep_time_ms = lv_timer_handler();
     if(sleep_time_ms == LV_NO_TIMER_READY){
 	sleep_time_ms =  LV_DEF_REFR_PERIOD;
+    }
+
+    if(happy_once_at && lv_tick_get() >= happy_once_at) {
+      happy_once_at = 0;
+      if(!pet_play_happy_once()) fprintf(stderr,"[warn] happy-once rejected (not awake / cooling down)\n");
     }
 
     if(shot_left > 0) {
