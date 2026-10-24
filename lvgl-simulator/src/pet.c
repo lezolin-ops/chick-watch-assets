@@ -739,6 +739,15 @@ static const lv_image_dsc_t * const ai_seq[] = {
     &ai_happy_20, &ai_happy_21, &ai_happy_22, &ai_happy_23, &ai_happy_24,
     &ai_happy_25, &ai_happy_26, &ai_happy_27, &ai_happy_28, &ai_happy_29
 };
+/* Firmware-candidate mode: swap in the 6 AI happy keyframes during the
+   response (wings lift / body tilt / mouth shapes are baked in the art)
+   instead of bouncing one static base sprite. Off by default. */
+static bool happy_keyframes = false;
+void pet_set_happy_keyframes(bool on)
+{
+    happy_keyframes = on;
+}
+
 static int happy_last_frame = -1;
 static int happy_frame_for_t(uint32_t t)
 {
@@ -775,6 +784,21 @@ static void happy_progress_cb(void *var, int32_t value)
     /* Hold a happy face through both hops and landing, then open the eyes. */
     s_pet.happy_smiling=t>=150 && t<1400;
     s_pet.blink_stage=t<40 ? 1 : t<100 ? 2 : t<150 ? 1 : 0;
+
+    if(happy_keyframes) {
+        /* Art-driven: the keyframes already carry the smiling eyes, so skip
+         * the programmatic eye overlay to avoid double-drawn eyes. */
+        static int last_kf = -1;
+        int kf = happy_frame_for_t(t);
+        if(kf != last_kf) {
+            last_kf = kf;
+            lv_img_set_src(s_pet.img, happy_frames[kf]);
+            lv_obj_invalidate(s_pet.img);
+        }
+        s_pet.happy_smiling = false;
+        s_pet.blink_stage = 0;
+    }
+
     /* Foot-anchored anticipation, takeoff, contact squash and smaller echo.
      * Smooth interpolation makes every contact continuous instead of teleporting up. */
     static const struct { uint16_t ms; int16_t y, sx, sy; } keys[] = {

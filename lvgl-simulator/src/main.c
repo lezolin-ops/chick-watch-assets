@@ -157,6 +157,9 @@ int main(int argc, char **argv)
     /* --happy-once [delay_ms]: fire the FIRMWARE happy response once -- 6
      * keyframes + programmatic squash/stretch over 1600ms, exactly what a
      * tap runs on the real device. Uses no AI sequence frames. */
+    /* --happy-keys: during the happy response, swap in the 6 AI keyframes
+       (wings/tilt/mouth baked into the art) instead of bouncing one sprite. */
+    else if(strcmp(argv[i],"--happy-keys")==0) pet_set_happy_keyframes(true);
     else if(strcmp(argv[i],"--happy-once")==0) {
       happy_once_at = (i+1<argc && argv[i+1][0]>='0' && argv[i+1][0]<='9')
                       ? (uint32_t)atoi(argv[++i]) : 500;

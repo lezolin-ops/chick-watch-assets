@@ -42,6 +42,10 @@ void pet_set_state(pet_state_t state);
 /** Play a 1600ms one-shot response; false while busy, sleeping or cooling down (2500ms). */
 bool pet_play_happy_once(void);
 
+/** Simulator preview: use the 6 AI happy keyframes (art-driven) during the
+ *  response instead of bouncing one static base sprite. Off by default. */
+void pet_set_happy_keyframes(bool on);
+
 /** Simulator preview only: force-loop happy after gap_ms, bypassing cooldown. Not for firmware. */
 void pet_happy_demo_tick(uint32_t gap_ms);
 
