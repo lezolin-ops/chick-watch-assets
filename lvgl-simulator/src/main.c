@@ -91,8 +91,17 @@ int main(int argc, char **argv)
   (void)argc; /*Unused*/
   (void)argv; /*Unused*/
 
+#ifdef _WIN32
+  /*MinGW-built SDL2 may silently fail on the Direct3D renderer (black window).
+    Force the software renderer; 410x502 canvas is cheap to blit on CPU.*/
+  SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
+#endif
+
   /*Initialize LVGL*/
   lv_init();
+
+  /*Bind LVGL tick to SDL time (otherwise tick stays 0 and no timer/refr ever fires)*/
+  lv_tick_set_cb(SDL_GetTicks);
 
   /*Initialize the HAL (display, input devices, tick) for LVGL*/
   sdl_hal_init(410, 502);
