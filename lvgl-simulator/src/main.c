@@ -23,6 +23,8 @@
 #include "lvgl/lvgl.h"
 #include <SDL.h>
 
+#include "lvgl/src/drivers/sdl/lv_sdl_private.h"
+
 #include "hal/hal.h"
 #include "pet.h"
 #include "lottie_demo.h"
@@ -86,6 +88,27 @@ static void angry_demo_cb(lv_timer_t *timer)
   (void)timer;
   pet_angry_demo_tick(700);
 }
+/* Offline frame dump: read the SDL renderer backbuffer and save a BMP.
+   Usage: main.exe --shot <count> <every> <prefix>
+     count  - total frames to save
+     every  - save one frame every N rendered ticks (33ms per tick)
+     prefix - output path prefix, files become prefix_000.bmp ... */
+static void dump_sdl_frame(const char *path)
+{
+  lv_display_t * disp = lv_display_get_default();
+  if(!disp) return;
+  SDL_Renderer * ren = lv_sdl_backend_ops.get_renderer(disp);
+  if(!ren) return;
+  int w = lv_sdl_window_get_horizontal_resolution(disp);
+  int h = lv_sdl_window_get_vertical_resolution(disp);
+  SDL_Surface * s = SDL_CreateRGBSurfaceWithFormat(0, w, h, 32, SDL_PIXELFORMAT_ABGR8888);
+  if(s) {
+    if(SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ABGR8888, s->pixels, s->pitch) == 0)
+      SDL_SaveBMP(s, path);
+    SDL_FreeSurface(s);
+  }
+}
+
 int main(int argc, char **argv)
 {
   (void)argc; /*Unused*/
@@ -120,6 +143,16 @@ int main(int argc, char **argv)
   /* Lottie 演示版（lv_lottie + ThorVG）备用：改调 lottie_demo_create 即可切换 */
   //lottie_demo_create(lv_screen_active(), 410, 502);
 
+  /* --shot <count> <every> <prefix>: render, dump frames, exit */
+  int shot_left = 0, shot_every = 5, shot_tick = 0;
+  const char * shot_prefix = "frame";
+  if(argc > 2 && strcmp(argv[1], "--shot") == 0) {
+    shot_left = atoi(argv[2]);
+    if(argc > 3) shot_every = atoi(argv[3]);
+    if(shot_every < 1) shot_every = 1;
+    if(argc > 4) shot_prefix = argv[4];
+  }
+
   while(1) {
     /* Periodically call the lv_task handler.
      * It could be done in a timer interrupt or an OS task too.*/
@@ -127,6 +160,17 @@ int main(int argc, char **argv)
     if(sleep_time_ms == LV_NO_TIMER_READY){
 	sleep_time_ms =  LV_DEF_REFR_PERIOD;
     }
+
+    if(shot_left > 0) {
+      if(shot_tick % shot_every == 0) {
+        char path[600];
+        snprintf(path, sizeof(path), "%s_%03d.bmp", shot_prefix, shot_tick / shot_every);
+        dump_sdl_frame(path);
+        if(--shot_left == 0) return 0;
+      }
+      shot_tick++;
+    }
+
 #ifdef _MSC_VER
     Sleep(sleep_time_ms);
 #else
