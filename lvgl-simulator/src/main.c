@@ -129,29 +129,40 @@ int main(int argc, char **argv)
   /*Initialize the HAL (display, input devices, tick) for LVGL*/
   sdl_hal_init(410, 502);
 
-  /* 启动电子宠物主界面（清醒日常循环 + 触摸开心） */
+  /* 启动电子宠物主界面（清醒日常循环 + 触摸开心）
+   * Demo flags and --shot may combine in any order, e.g.:
+   *   main.exe --happy-demo --shot 80 2 E:/tmp/f  */
   pet_create(lv_screen_active(), 410, 502);
-  if(argc>1 && strcmp(argv[1],"--sleep-demo")==0) lv_timer_create(sleep_demo_cb,100,NULL);
-  if(argc>1 && strcmp(argv[1],"--happy-demo")==0) {
+  bool happy_demo=false, angry_demo=false, sleep_demo=false;
+  /* --shot <count> <every> <prefix>: render, dump frames, exit.
+   * Driven by LVGL tick (real time), NOT loop iterations: iterations vary
+   * in length (timer handler returns the wait till the next due timer).
+   * every = frames per 33ms tick period, i.e. every=1 -> one frame each
+   * ~33ms; every=2 -> one frame each ~66ms. */
+  int shot_left = 0, shot_every = 5, shot_tick = 0;
+  const char * shot_prefix = "frame";
+  for(int i=1;i<argc;i++) {
+    if(strcmp(argv[i],"--sleep-demo")==0) sleep_demo=true;
+    else if(strcmp(argv[i],"--happy-demo")==0) happy_demo=true;
+    else if(strcmp(argv[i],"--angry-demo")==0) angry_demo=true;
+    else if(strcmp(argv[i],"--shot")==0 && i+1<argc) {
+      shot_left = atoi(argv[++i]);
+      if(i+1<argc) shot_every = atoi(argv[++i]);
+      if(shot_every < 1) shot_every = 1;
+      if(i+1<argc) shot_prefix = argv[++i];
+    }
+  }
+  if(sleep_demo) lv_timer_create(sleep_demo_cb,100,NULL);
+  if(happy_demo) {
     pet_set_demo_mode(true); /* freeze daily behavior; loop only happy */
     lv_timer_create(happy_demo_cb,100,NULL);
   }
-  if(argc>1 && strcmp(argv[1],"--angry-demo")==0) {
+  if(angry_demo) {
     pet_set_demo_mode(true); /* freeze daily behavior; loop only angry */
     lv_timer_create(angry_demo_cb,100,NULL);
   }
   /* Lottie 演示版（lv_lottie + ThorVG）备用：改调 lottie_demo_create 即可切换 */
   //lottie_demo_create(lv_screen_active(), 410, 502);
-
-  /* --shot <count> <every> <prefix>: render, dump frames, exit */
-  int shot_left = 0, shot_every = 5, shot_tick = 0;
-  const char * shot_prefix = "frame";
-  if(argc > 2 && strcmp(argv[1], "--shot") == 0) {
-    shot_left = atoi(argv[2]);
-    if(argc > 3) shot_every = atoi(argv[3]);
-    if(shot_every < 1) shot_every = 1;
-    if(argc > 4) shot_prefix = argv[4];
-  }
 
   while(1) {
     /* Periodically call the lv_task handler.
@@ -162,13 +173,17 @@ int main(int argc, char **argv)
     }
 
     if(shot_left > 0) {
-      if(shot_tick % shot_every == 0) {
+      /* Frame cadence follows LVGL tick (33ms per unit), not loop speed. */
+      static uint32_t last_dump_tick = 0;
+      uint32_t now = lv_tick_get();
+      if(shot_tick == 0 || now - last_dump_tick >= (uint32_t)shot_every * 33) {
         char path[600];
-        snprintf(path, sizeof(path), "%s_%03d.bmp", shot_prefix, shot_tick / shot_every);
+        snprintf(path, sizeof(path), "%s_%03d.bmp", shot_prefix, shot_tick);
         dump_sdl_frame(path);
+        last_dump_tick = now;
+        shot_tick++;
         if(--shot_left == 0) return 0;
       }
-      shot_tick++;
     }
 
 #ifdef _MSC_VER

@@ -898,6 +898,10 @@ void pet_set_demo_mode(bool on)
         lv_timer_pause(s_pet.timer);
         lv_timer_pause(s_pet.blink_timer);
         lv_timer_pause(s_pet.mouth_timer);
+        /* Preview workbench needs an awake pet, or happy/angry guards
+         * (!awake) block every demo action forever. */
+        s_pet.awake = true;
+        sleep_phase = SLEEP_NONE;
         s_pet.happy = false;
         s_pet.happy_smiling = false;
         s_pet.x = 0;
