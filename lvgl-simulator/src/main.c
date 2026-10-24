@@ -82,6 +82,14 @@ static void happy_demo_cb(lv_timer_t *timer)
   pet_happy_demo_tick(800);
 }
 
+/* Preview the FIRMWARE response (same code a tap runs on the real device)
+   in a loop. Gap must exceed the 2500ms cooldown inside pet_play_happy_once. */
+static void happy_once_loop_cb(lv_timer_t *timer)
+{
+  (void)timer;
+  pet_play_happy_once();
+}
+
 /* Preview: loop the angry keyframe sequence with a 700ms rest gap. */
 static void angry_demo_cb(lv_timer_t *timer)
 {
@@ -152,6 +160,13 @@ int main(int argc, char **argv)
     else if(strcmp(argv[i],"--happy-once")==0) {
       happy_once_at = (i+1<argc && argv[i+1][0]>='0' && argv[i+1][0]<='9')
                       ? (uint32_t)atoi(argv[++i]) : 500;
+    }
+    /* --happy-loop [gap_ms]: repeat the firmware response forever (visual
+       review of the real-device animation path). */
+    else if(strcmp(argv[i],"--happy-loop")==0) {
+      uint32_t gap = (i+1<argc && argv[i+1][0]>='0' && argv[i+1][0]<='9')
+                     ? (uint32_t)atoi(argv[++i]) : 2600;
+      lv_timer_create(happy_once_loop_cb, gap < 2600 ? 2600 : gap, NULL);
     }
     else if(strcmp(argv[i],"--shot")==0 && i+1<argc) {
       shot_left = atoi(argv[++i]);
